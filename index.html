@@ -1,0 +1,1873 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Moving & Tracking</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@700;900&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+<meta name="theme-color" content="#c9a84c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="M&T Board">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script src="geo-data.js"></script>
+<script>
+// Firebase init OUTSIDE babel so both React and vanilla JS can use it
+(function(){
+  var C = window.MT_CONFIG || {}, fb = C.firebase || {};
+  var ok = fb.apiKey && fb.databaseURL && !/YOUR-/.test([fb.apiKey, fb.databaseURL, fb.projectId, fb.authDomain].join(" "));
+  firebase.initializeApp(ok ? fb : {apiKey:"unconfigured", databaseURL:"https://unconfigured-default-rtdb.firebaseio.com"});
+  window.db = firebase.database();
+  window.auth = firebase.auth();
+})();
+// PWA install prompt
+window.deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', function(e){
+  e.preventDefault();
+  window.deferredInstallPrompt = e;
+  window.dispatchEvent(new Event('pwa-installable'));
+});
+</script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-omnivore@0.3.4/leaflet-omnivore.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+.leaflet-container{background:#0d1f2d!important}
+.leaflet-popup-content-wrapper{background:#0f1318;border:1px solid #c9a84c;border-radius:0;color:#d4dde8;font-family:'Share Tech Mono',monospace;font-size:12px}
+.leaflet-popup-tip{background:#c9a84c}
+.leaflet-popup-close-button{color:#c9a84c!important}
+html,body,#root{min-height:100vh}
+body{background:#080a0d;color:#d4dde8}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(201,168,76,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(201,168,76,0.025) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0}
+#root{position:relative;z-index:1}
+select{-webkit-appearance:none;appearance:none}
+fieldset{border:0;padding:0;margin:0;min-width:0}
+fieldset:disabled input,fieldset:disabled select,fieldset:disabled button{cursor:not-allowed}
+fieldset:disabled input,fieldset:disabled select{opacity:.75}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes rp{0%,100%{background:rgba(231,76,60,0.07)}50%{background:rgba(231,76,60,0.13)}}
+@keyframes alertpulse{0%,100%{box-shadow:0 0 0 0 rgba(231,76,60,0.2)}50%{box-shadow:0 0 8px 2px rgba(231,76,60,0.15)}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="env,react">
+const db = window.db;
+const DEFAULT_LOCS = ["LOCATION 1","LOCATION 2","OUT"];
+const DEFAULT_LOCS2 = []; // separate location list
+const DEFAULT_STATUSES = ["IN","OUT","R&R","MEDICAL","TASKING","TRANSITING"];
+const PAL = ["#c9a84c","#3498db","#2ecc71","#9b59b6","#e74c3c","#e67e22","#1abc9c","#e91e63","#00bcd4","#8bc34a"];
+const MONTHS = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+const SCOL = {
+  IN:{color:"#2ecc71",bg:"rgba(46,204,113,0.15)"},
+  OUT:{color:"#e74c3c",bg:"rgba(231,76,60,0.15)"},
+  "R&R":{color:"#3498db",bg:"rgba(52,152,219,0.15)"},
+  MEDICAL:{color:"#f39c12",bg:"rgba(243,156,18,0.15)"},
+  TASKING:{color:"#9b59b6",bg:"rgba(155,89,182,0.15)"},
+  TRANSITING:{color:"#1abc9c",bg:"rgba(26,188,156,0.15)"},
+  "":{color:"#5a6a7a",bg:"transparent"},
+};
+const STATUS_PAL=["#2ecc71","#e74c3c","#3498db","#f39c12","#9b59b6","#1abc9c","#e67e22","#e91e63","#00bcd4","#c9a84c"];
+function statusColor(st){const known=SCOL[st];if(known)return known;const i=DEFAULT_STATUSES.length;return{color:STATUS_PAL[i%STATUS_PAL.length],bg:"rgba(201,168,76,0.12)"};};
+
+const pad = n => String(n).padStart(2,"0");
+// Local time follows the AO (country) chosen by the admin. No AO yet = "TBC LOCATION": clock shows 00:00:00, logic runs on UTC.
+const AO = {tz:"UTC", set:false};
+const aoParts = d => {
+  try{
+    const fmt = new Intl.DateTimeFormat("en-GB",{timeZone:AO.tz,hourCycle:"h23",year:"numeric",month:"numeric",day:"numeric",hour:"numeric",minute:"numeric",second:"numeric"});
+    const o = {}; fmt.formatToParts(d||new Date()).forEach(p=>{ o[p.type]=parseInt(p.value,10); });
+    return {y:o.year,mo:o.month,d:o.day,h:o.hour%24,mi:o.minute,s:o.second};
+  }catch(e){
+    const n=d||new Date();
+    return {y:n.getUTCFullYear(),mo:n.getUTCMonth()+1,d:n.getUTCDate(),h:n.getUTCHours(),mi:n.getUTCMinutes(),s:n.getUTCSeconds()};
+  }
+};
+const aoFakeNow = () => { const p=aoParts(); return new Date(Date.UTC(p.y,p.mo-1,p.d,p.h,p.mi,p.s)); };
+const bhrNow = () => { if(!AO.set) return "00:00:00"; const p=aoParts(); return pad(p.h)+":"+pad(p.mi)+":"+pad(p.s); };
+const zuluNow = () => { const n=new Date(); return pad(n.getUTCHours())+":"+pad(n.getUTCMinutes())+":"+pad(n.getUTCSeconds()); };
+const nowMins = () => { const p=aoParts(); return p.h*60+p.mi; };
+const toMins = t => { if(!t||!t.includes(":"))return null; const[h,m]=t.split(":").map(Number); return h*60+m; };
+const isOvd = r => {
+  if(!r||!r.dueBack||r.status==="IN"||!r.status)return false;
+  if(r.dueDate){
+    const now=aoFakeNow();
+    const[d,mo]=r.dueDate.split("/").map(Number);
+    const due=new Date(Date.UTC(now.getUTCFullYear(),mo-1,d));
+    const today=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),now.getUTCDate()));
+    if(due>today)return false;
+    if(due<today)return true;
+  }
+  const m=toMins(r.dueBack); return m!==null&&nowMins()>m;
+};
+const ovdStr = r => { const d=nowMins()-toMins(r.dueBack),h=Math.floor(d/60),m=d%60; return h>0?"+"+h+"H "+m+"M":"+"+m+"M"; };
+
+const {useState,useEffect,useRef} = React;
+
+// TIME PICKER
+function TimePicker({time,date,onConfirm,onClear,onClose}){
+  const [h,setH] = useState(parseInt((time||"00:00").split(":")[0])||0);
+  const [m,setM] = useState(parseInt((time||"00:00").split(":")[1])||0);
+  const now = aoFakeNow();
+  const [day,setDay] = useState(date?parseInt(date.split("/")[0]):now.getUTCDate());
+  const [mon,setMon] = useState(date?parseInt(date.split("/")[1])-1:now.getUTCMonth());
+  const daysInMonth = new Date(Date.UTC(now.getUTCFullYear(),mon+1,0)).getUTCDate();
+  const fnt = "'Share Tech Mono',monospace";
+  const btnS = (sel) => ({background:sel?"rgba(201,168,76,0.2)":"#080a0d",border:"1px solid "+(sel?"#c9a84c":"#1e2630"),color:sel?"#c9a84c":"#5a6a7a",fontFamily:fnt,fontSize:"12px",padding:"6px 8px",cursor:"pointer",minWidth:"40px",letterSpacing:"1px"});
+  const lbl = {fontSize:"9px",color:"#5a6a7a",letterSpacing:"3px",marginBottom:"8px",fontFamily:fnt};
+  return (
+    <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:"16px",overflowY:"auto"}}>
+      <div style={{background:"#0f1318",border:"1px solid #c9a84c",width:"100%",maxWidth:"380px",fontFamily:fnt}}>
+        <div style={{background:"#0d1117",borderBottom:"1px solid #7a6330",padding:"12px 20px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{color:"#c9a84c",fontSize:"11px",letterSpacing:"3px"}}>DUE BACK — DATE & TIME (LOCAL)</span>
+          <button onClick={onClose} style={{background:"transparent",border:"none",color:"#5a6a7a",cursor:"pointer",fontSize:"18px"}}>✕</button>
+        </div>
+        <div style={{padding:"16px 20px"}}>
+          <div style={{textAlign:"center",fontSize:"32px",fontFamily:"'Barlow Condensed',sans-serif",fontWeight:"900",color:"#c9a84c",letterSpacing:"4px",marginBottom:"16px"}}>
+            {pad(day)} {MONTHS[mon]} — {pad(h)}:{pad(m)}
+          </div>
+          <div style={{marginBottom:"12px"}}><div style={lbl}>MONTH</div><div style={{display:"flex",flexWrap:"wrap",gap:"5px"}}>{MONTHS.map((mo,i)=><button key={i} onClick={()=>{setMon(i);const dim=new Date(Date.UTC(now.getUTCFullYear(),i+1,0)).getUTCDate();if(day>dim)setDay(dim);}} style={btnS(mon===i)}>{mo}</button>)}</div></div>
+          <div style={{marginBottom:"12px"}}><div style={lbl}>DAY</div><div style={{display:"flex",flexWrap:"wrap",gap:"5px"}}>{Array.from({length:daysInMonth},(_,i)=>i+1).map(d=><button key={d} onClick={()=>setDay(d)} style={btnS(day===d)}>{pad(d)}</button>)}</div></div>
+          <div style={{marginBottom:"12px"}}><div style={lbl}>HOUR</div><div style={{display:"flex",flexWrap:"wrap",gap:"5px"}}>{Array.from({length:24},(_,i)=>i).map(hh=><button key={hh} onClick={()=>setH(hh)} style={btnS(h===hh)}>{pad(hh)}</button>)}</div></div>
+          <div style={{marginBottom:"20px"}}><div style={lbl}>MINUTE</div><div style={{display:"flex",flexWrap:"wrap",gap:"5px"}}>{[0,5,10,15,20,25,30,35,40,45,50,55].map(mm=><button key={mm} onClick={()=>setM(mm)} style={btnS(m===mm)}>{pad(mm)}</button>)}</div></div>
+          <div style={{display:"flex",gap:"8px"}}>
+            <button onClick={onClear} style={{flex:1,background:"rgba(231,76,60,0.1)",border:"1px solid rgba(231,76,60,0.4)",color:"#e74c3c",fontFamily:fnt,fontSize:"12px",letterSpacing:"2px",padding:"10px",cursor:"pointer"}}>CLEAR</button>
+            <button onClick={()=>onConfirm(pad(h)+":"+pad(m),pad(day)+"/"+pad(mon+1))} style={{flex:2,background:"rgba(201,168,76,0.15)",border:"1px solid #c9a84c",color:"#c9a84c",fontFamily:fnt,fontSize:"12px",letterSpacing:"2px",padding:"10px",cursor:"pointer"}}>CONFIRM</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Vehicle Date Picker
+function VehicleDatePicker({value, onConfirm, onClose}){
+  const MONTHS=["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+  const today=new Date();
+  const initParts=(value||"").split("/");
+  const [day,setDay]=React.useState(parseInt(initParts[0])||today.getDate());
+  const [mon,setMon]=React.useState(parseInt(initParts[1])-1>=0?parseInt(initParts[1])-1:today.getMonth());
+  const [yr,setYr]=React.useState(parseInt(initParts[2])||today.getFullYear());
+  const daysInMonth=new Date(yr,mon+1,0).getDate();
+  const fnt="'Share Tech Mono',monospace";
+  const btnS=(sel)=>({background:sel?"rgba(201,168,76,0.2)":"#080a0d",border:"1px solid "+(sel?"#c9a84c":"#1e2630"),color:sel?"#c9a84c":"#5a6a7a",fontFamily:fnt,fontSize:"11px",padding:"5px 7px",cursor:"pointer",minWidth:"36px"});
+  const lbl={fontSize:"9px",color:"#5a6a7a",letterSpacing:"3px",marginBottom:"8px",fontFamily:fnt};
+  const pad=n=>String(n).padStart(2,"0");
+  const years=Array.from({length:5},(_,i)=>today.getFullYear()-2+i);
+  return(
+    <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:"16px",overflowY:"auto"}}>
+      <div style={{background:"#0f1318",border:"1px solid #c9a84c",width:"100%",maxWidth:"380px",fontFamily:fnt}}>
+        <div style={{background:"#0d1117",borderBottom:"1px solid #7a6330",padding:"12px 20px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{color:"#c9a84c",fontSize:"11px",letterSpacing:"3px"}}>DATE TAKEN ON</span>
+          <button onClick={onClose} style={{background:"transparent",border:"none",color:"#5a6a7a",cursor:"pointer",fontSize:"18px"}}>✕</button>
+        </div>
+        <div style={{padding:"16px 20px"}}>
+          <div style={{textAlign:"center",fontSize:"28px",fontFamily:"'Barlow Condensed',sans-serif",fontWeight:"900",color:"#c9a84c",letterSpacing:"4px",marginBottom:"16px"}}>
+            {pad(day)} {MONTHS[mon]} {yr}
+          </div>
+          <div style={{marginBottom:"12px"}}><div style={lbl}>YEAR</div><div style={{display:"flex",gap:"5px",flexWrap:"wrap"}}>{years.map(y=><button key={y} onClick={()=>setYr(y)} style={btnS(yr===y)}>{y}</button>)}</div></div>
+          <div style={{marginBottom:"12px"}}><div style={lbl}>MONTH</div><div style={{display:"flex",gap:"5px",flexWrap:"wrap"}}>{MONTHS.map((m,i)=><button key={i} onClick={()=>{setMon(i);const dim=new Date(yr,i+1,0).getDate();if(day>dim)setDay(dim);}} style={btnS(mon===i)}>{m}</button>)}</div></div>
+          <div style={{marginBottom:"20px"}}><div style={lbl}>DAY</div><div style={{display:"flex",gap:"5px",flexWrap:"wrap"}}>{Array.from({length:daysInMonth},(_,i)=>i+1).map(d=><button key={d} onClick={()=>setDay(d)} style={btnS(day===d)}>{pad(d)}</button>)}</div></div>
+          <div style={{display:"flex",gap:"8px"}}>
+            <button onClick={()=>onConfirm("")} style={{flex:1,background:"rgba(231,76,60,0.1)",border:"1px solid rgba(231,76,60,0.4)",color:"#e74c3c",fontFamily:fnt,fontSize:"12px",letterSpacing:"2px",padding:"10px",cursor:"pointer"}}>CLEAR</button>
+            <button onClick={()=>onConfirm(pad(day)+"/"+pad(mon+1)+"/"+yr)} style={{flex:2,background:"rgba(201,168,76,0.15)",border:"1px solid #c9a84c",color:"#c9a84c",fontFamily:fnt,fontSize:"12px",letterSpacing:"2px",padding:"10px",cursor:"pointer"}}>CONFIRM</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Vehicles permanently locked to Welfare
+const WELFARE_VRNS = [];
+const VEHICLE_PURPOSES = ["","TASKING","WELFARE","TRANSPORT","EVAC"];
+const PURPOSE_COLOR = {
+  TASKING:{color:"#9b59b6",bg:"rgba(155,89,182,0.15)"},
+  WELFARE:{color:"#2ecc71",bg:"rgba(46,204,113,0.15)"},
+  TRANSPORT:{color:"#3498db",bg:"rgba(52,152,219,0.15)"},
+  EVAC:{color:"#e74c3c",bg:"rgba(231,76,60,0.15)"},
+  "":{color:"#5a6a7a",bg:"transparent"},
+};
+
+// ═══════════════════════════════════════════════════════════════
+// AUTH / ADMIN LAYER — login, session audit, change audit, admin console
+// ═══════════════════════════════════════════════════════════════
+const CFG = window.MT_CONFIG || {};
+const USER_DOMAIN = CFG.usernameDomain || "movetrack.local";
+const DEFAULT_IDLE = typeof CFG.defaultIdleMinutes==="number" ? CFG.defaultIdleMinutes : 30;
+const RANKS = (CFG.ranks && CFG.ranks.length) ? CFG.ranks : [
+  {code:"Gen",name:"General",order:17},{code:"Lt Gen",name:"Lieutenant General",order:16},{code:"Maj Gen",name:"Major General",order:15},
+  {code:"Brig",name:"Brigadier",order:14},{code:"Col",name:"Colonel",order:13},{code:"Lt Col",name:"Lieutenant Colonel",order:12},
+  {code:"Maj",name:"Major",order:11},{code:"Capt",name:"Captain",order:10},{code:"Lt",name:"Lieutenant",order:9},{code:"2Lt",name:"Second Lieutenant",order:8},
+  {code:"WO1",name:"Warrant Officer Class 1",order:7},{code:"WO2",name:"Warrant Officer Class 2",order:6},{code:"SSgt",name:"Staff Sergeant",order:5},
+  {code:"Sgt",name:"Sergeant",order:4},{code:"Cpl",name:"Corporal",order:3},{code:"LCpl",name:"Lance Corporal",order:2},{code:"Pte",name:"Private",order:1},
+  {code:"CIV",name:"Civilian / Contractor",order:0}
+];
+const PERM_DEFS = [
+  ["vehicles","VEHICLES & FUEL CARDS"],
+  ["rooms","BDL ROOMS (G4)"],
+  ["fp","FP NUMBERS (G6)"],
+  ["evac","EVAC (FORCE PROTECTION)"],
+  ["editOthers","EDIT OTHERS' BOARD LINES"]
+];
+const SV = () => firebase.database.ServerValue.TIMESTAMP;
+const toEmail = u => String(u).trim().toLowerCase()+"@"+USER_DOMAIN;
+const USER_RE = /^[a-z0-9._-]{3,30}$/;
+const cfgOk = () => {
+  const c = CFG.firebase;
+  return !!(c && c.apiKey && c.databaseURL && !/YOUR-/.test([c.apiKey,c.databaseURL,c.projectId,c.authDomain].join(" ")));
+};
+const fmtZ = ts => {
+  if(!ts) return "—";
+  const d = new Date(ts);
+  return pad(d.getUTCDate())+" "+MONTHS[d.getUTCMonth()]+" "+pad(d.getUTCHours())+":"+pad(d.getUTCMinutes())+":"+pad(d.getUTCSeconds())+"Z";
+};
+const authMsg = e => {
+  const c = (e && e.code) || "";
+  if(["auth/invalid-credential","auth/wrong-password","auth/user-not-found","auth/invalid-email","auth/invalid-login-credentials"].includes(c)) return "INVALID USERNAME OR PASSWORD";
+  if(c==="auth/too-many-requests") return "TOO MANY ATTEMPTS — WAIT A FEW MINUTES";
+  if(c==="auth/user-disabled") return "ACCOUNT DISABLED — CONTACT ADMIN";
+  if(c==="auth/network-request-failed") return "NETWORK ERROR — CHECK CONNECTION";
+  if(c==="auth/operation-not-allowed") return "EMAIL/PASSWORD SIGN-IN IS NOT ENABLED IN FIREBASE";
+  return "LOGIN FAILED"+(c?" ("+c+")":"");
+};
+const genPw = () => {
+  const cs = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+  const a = new Uint32Array(14); crypto.getRandomValues(a);
+  return Array.from(a).map(n=>cs[n%cs.length]).join("");
+};
+const csvCell = v => {
+  let s = String(v==null?"":v);
+  if(/^[=+\-@\t\r]/.test(s)) s = "'"+s;          // block spreadsheet formula injection
+  return '"'+s.replace(/"/g,'""')+'"';
+};
+const downloadText = (name,text,mime) => {
+  const b = new Blob([text],{type:mime||"text/csv"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(b); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1500);
+};
+const keyOf = n => String(n).replace(/[^a-zA-Z0-9]/g,"_").slice(0,48);
+const rankObj = code => RANKS.find(r=>r.code===code) || RANKS[RANKS.length-1];
+
+// Change audit (who changed what). Written by the app, readable by admins only.
+const auditNow = (area,target,field,from,to) => {
+  const me = window.MT_ME; if(!me) return;
+  const cl = (v,n) => String(v==null?"":v).slice(0,n||120);
+  try{ db.ref("changes").push().set({uid:me.uid,username:me.username,area:area,target:cl(target,60),field:cl(field,40),from:cl(from),to:cl(to),ts:SV()}); }catch(e){}
+};
+
+const A = { mono:"'Share Tech Mono',monospace", sans:"'Barlow Condensed',sans-serif", gold:"#c9a84c", dim:"#5a6a7a", line:"#1e2630", panel:"#0d1117", red:"#e74c3c", green:"#2ecc71", orange:"#e67e22", blue:"#3498db" };
+const inputSt = { width:"100%", boxSizing:"border-box", background:"#080a0d", border:"1px solid "+A.line, color:"#fff", fontFamily:A.mono, fontSize:"13px", padding:"9px 11px", outline:"none", letterSpacing:"1px" };
+const btnSt = c => ({ background:(c||A.gold)+"22", border:"1px solid "+(c||A.gold), color:c||A.gold, fontFamily:A.mono, fontSize:"11px", letterSpacing:"2px", padding:"9px 14px", cursor:"pointer" });
+const labSt = { fontSize:"10px", color:A.dim, letterSpacing:"2px", fontFamily:A.mono, marginBottom:"6px", marginTop:"14px" };
+const smallBtn = c => ({ background:"transparent", border:"1px solid "+c+"88", color:c, fontFamily:A.mono, fontSize:"10px", letterSpacing:"1px", padding:"5px 9px", cursor:"pointer", marginRight:"6px", marginBottom:"4px" });
+const secT2 = { fontFamily:A.sans, fontWeight:900, fontSize:"18px", letterSpacing:"3px", color:A.gold, margin:"28px 0 10px" };
+const panelSt = { background:A.panel, border:"1px solid "+A.line, padding:"16px" };
+
+function Splash({text}){
+  return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#080a0d",color:A.gold,fontFamily:A.mono,letterSpacing:"3px",fontSize:"12px"}}>{text}</div>;
+}
+
+function SetupNeeded(){
+  return (
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:"20px",background:"#080a0d"}}>
+      <div style={{maxWidth:"460px",background:A.panel,border:"1px solid "+A.line,borderTop:"3px solid "+A.orange,padding:"24px",fontFamily:A.mono,color:"#d4dde8",fontSize:"12px",lineHeight:"1.7"}}>
+        <div style={{color:A.orange,letterSpacing:"3px",marginBottom:"12px"}}>SETUP REQUIRED</div>
+        This copy is not connected to a Firebase project yet. Open <b>firebase-config.js</b>, paste in your Firebase project settings, and follow README.md.
+      </div>
+    </div>
+  );
+}
+
+function LoginScreen({notice,onLogin}){
+  const [u,setU] = useState("");
+  const [p,setP] = useState("");
+  const [err,setErr] = useState("");
+  const [busy,setBusy] = useState(false);
+  const [show,setShow] = useState(false);
+  const submit = async e => {
+    e.preventDefault(); setErr("");
+    if(!u.trim()||!p){ setErr("ENTER USERNAME AND PASSWORD"); return; }
+    setBusy(true);
+    try{ await onLogin(u,p); }
+    catch(ex){ setErr(authMsg(ex)); setBusy(false); setP(""); }
+  };
+  return (
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:"20px",background:"#080a0d"}}>
+      <form onSubmit={submit} style={{width:"100%",maxWidth:"360px",background:A.panel,border:"1px solid "+A.line,borderTop:"3px solid "+A.gold,padding:"28px 24px"}}>
+        <div style={{fontFamily:A.sans,fontWeight:900,fontSize:"30px",letterSpacing:"4px",color:"#fff",textAlign:"center"}}>MOVING <span style={{color:A.gold}}>&</span> TRACKING</div>
+        <div style={{fontFamily:A.mono,fontSize:"10px",letterSpacing:"3px",color:A.dim,textAlign:"center",marginTop:"6px"}}>AUTHORISED USERS ONLY</div>
+        {notice&&<div style={{marginTop:"16px",padding:"8px 10px",border:"1px solid "+A.orange+"88",background:A.orange+"11",color:A.orange,fontFamily:A.mono,fontSize:"11px",letterSpacing:"1px"}}>{notice}</div>}
+        <div style={labSt}>USERNAME</div>
+        <input style={inputSt} value={u} onChange={e=>setU(e.target.value)} autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoFocus/>
+        <div style={labSt}>PASSWORD</div>
+        <input style={inputSt} type={show?"text":"password"} value={p} onChange={e=>setP(e.target.value)} autoComplete="current-password"/>
+        <label style={{display:"flex",alignItems:"center",gap:"6px",marginTop:"8px",fontFamily:A.mono,fontSize:"10px",color:A.dim,letterSpacing:"1px",cursor:"pointer"}}>
+          <input type="checkbox" checked={show} onChange={e=>setShow(e.target.checked)}/> SHOW PASSWORD
+        </label>
+        {err&&<div style={{marginTop:"14px",color:A.red,fontFamily:A.mono,fontSize:"11px",letterSpacing:"1px"}}>⚠ {err}</div>}
+        <button type="submit" disabled={busy} style={{...btnSt(),width:"100%",marginTop:"18px",opacity:busy?0.5:1}}>{busy?"CHECKING...":"LOG IN"}</button>
+        <div style={{marginTop:"16px",fontFamily:A.mono,fontSize:"9px",color:A.dim,letterSpacing:"1px",textAlign:"center",lineHeight:"1.6"}}>You must log in again every time this page is opened or refreshed. All logins are recorded.</div>
+      </form>
+    </div>
+  );
+}
+
+function AccountModal({user,profile,onClose}){
+  const [cur,setCur] = useState("");
+  const [n1,setN1] = useState("");
+  const [n2,setN2] = useState("");
+  const [msg,setMsg] = useState(null);
+  const [busy,setBusy] = useState(false);
+  const save = async () => {
+    setMsg(null);
+    if(!cur) return setMsg({ok:false,t:"ENTER YOUR CURRENT PASSWORD"});
+    if(n1.length<10) return setMsg({ok:false,t:"NEW PASSWORD MUST BE AT LEAST 10 CHARACTERS"});
+    if(n1!==n2) return setMsg({ok:false,t:"NEW PASSWORDS DO NOT MATCH"});
+    setBusy(true);
+    try{
+      const cred = firebase.auth.EmailAuthProvider.credential(user.email, cur);
+      await user.reauthenticateWithCredential(cred);
+      await user.updatePassword(n1);
+      auditNow("ACCOUNT",profile.username,"password","","changed by user");
+      setMsg({ok:true,t:"PASSWORD CHANGED"}); setCur(""); setN1(""); setN2("");
+    }catch(e){
+      const c=(e&&e.code)||"";
+      setMsg({ok:false,t:(c==="auth/invalid-credential"||c==="auth/wrong-password")?"CURRENT PASSWORD IS INCORRECT":(c==="auth/weak-password"?"PASSWORD TOO WEAK":"COULD NOT CHANGE PASSWORD"+(c?" ("+c+")":""))});
+    }
+    setBusy(false);
+  };
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",display:"flex",alignItems:"center",justifyContent:"center",padding:"20px",zIndex:10000}} onClick={onClose}>
+      <div style={{width:"100%",maxWidth:"360px",background:A.panel,border:"1px solid "+A.line,borderTop:"3px solid "+A.gold,padding:"24px"}} onClick={e=>e.stopPropagation()}>
+        <div style={{fontFamily:A.sans,fontWeight:900,fontSize:"22px",letterSpacing:"3px",color:"#fff"}}>CHANGE PASSWORD</div>
+        <div style={{fontFamily:A.mono,fontSize:"10px",color:A.dim,letterSpacing:"2px",marginTop:"4px"}}>USER: {profile.username.toUpperCase()}</div>
+        <div style={labSt}>CURRENT PASSWORD</div>
+        <input style={inputSt} type="password" value={cur} onChange={e=>setCur(e.target.value)} autoComplete="current-password"/>
+        <div style={labSt}>NEW PASSWORD (MIN 10 CHARS)</div>
+        <input style={inputSt} type="password" value={n1} onChange={e=>setN1(e.target.value)} autoComplete="new-password"/>
+        <div style={labSt}>CONFIRM NEW PASSWORD</div>
+        <input style={inputSt} type="password" value={n2} onChange={e=>setN2(e.target.value)} autoComplete="new-password"/>
+        {msg&&<div style={{marginTop:"12px",fontFamily:A.mono,fontSize:"11px",letterSpacing:"1px",color:msg.ok?A.green:A.red}}>{msg.ok?"✔ ":"⚠ "}{msg.t}</div>}
+        <div style={{display:"flex",gap:"10px",marginTop:"18px"}}>
+          <button onClick={save} disabled={busy} style={{...btnSt(),flex:1,opacity:busy?0.5:1}}>{busy?"SAVING...":"SAVE"}</button>
+          <button onClick={onClose} style={{...btnSt(A.dim),flex:1}}>CLOSE</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Creates a Firebase Auth login WITHOUT signing the admin out (uses a throw-away second app instance).
+async function createAuthUser(username,password){
+  let sec;
+  try{ sec = firebase.app("creator"); }catch(e){ sec = firebase.initializeApp(CFG.firebase,"creator"); }
+  const sa = sec.auth();
+  await sa.setPersistence(firebase.auth.Auth.Persistence.NONE);
+  const cred = await sa.createUserWithEmailAndPassword(toEmail(username),password);
+  const uid = cred.user.uid;
+  await sa.signOut();
+  return uid;
+}
+const createErr = e => {
+  const c=(e&&e.code)||"";
+  if(c==="auth/email-already-in-use") return "THAT USERNAME IS ALREADY TAKEN (usernames cannot be reused — pick another)";
+  if(c==="auth/operation-not-allowed") return "EMAIL/PASSWORD SIGN-IN IS NOT ENABLED IN FIREBASE";
+  if(c==="auth/weak-password") return "PASSWORD TOO WEAK";
+  if(c==="PERMISSION_DENIED"||/permission/i.test((e&&e.message)||"")) return "DATABASE REFUSED THE WRITE — CHECK THE RULES WERE PUBLISHED";
+  return "COULD NOT CREATE USER"+(c?" ("+c+")":"");
+};
+
+// ───────── AREA OF OPERATIONS (country → clock, map, region list) ─────────
+function AoPanel({ao,evacOpen}){
+  const G = window.MT_GEO || {countries:[],regions:{}};
+  const [cc,setCc] = useState(ao.country||"");
+  const [tz,setTz] = useState(ao.tz||"");
+  const [msg,setMsg] = useState(null);
+  useEffect(()=>{ setCc(ao.country||""); setTz(ao.tz||""); },[ao.country,ao.tz]);
+  const cobj = G.countries.find(c=>c[0]===cc);
+  const tzs = cobj ? cobj[5] : [];
+  const regs = (G.regions[cc]||[]);
+  const pickCountry = v => { setCc(v); const c=G.countries.find(x=>x[0]===v); setTz(c&&c[5][0]||""); setMsg(null); };
+  const validTz = z => { try{ new Intl.DateTimeFormat("en-GB",{timeZone:z}); return true; }catch(e){ return false; } };
+  const populate = () => {
+    if(!cobj) return;
+    const o = {}; o[keyOf(cobj[1].toUpperCase())] = cobj[1].toUpperCase();
+    regs.forEach(r=>{ const n=r[0].toUpperCase().slice(0,40); o[keyOf(n)]=n; });
+    return db.ref("locations2").set(o).then(()=>{ auditNow("AO","LOCATION LIST","populate","",Object.keys(o).length+" regions of "+cobj[1]); });
+  };
+  const apply = async () => {
+    setMsg(null);
+    if(!cobj) return setMsg({ok:false,t:"SELECT A COUNTRY"});
+    if(!tz||!validTz(tz)) return setMsg({ok:false,t:"NO VALID TIME ZONE FOR THAT COUNTRY"});
+    try{
+      await db.ref("settings/ao").set({country:cc,name:cobj[1],tz:tz,lat:cobj[2],lng:cobj[3],zoom:cobj[4]});
+      auditNow("AO","AREA OF OPERATIONS","country",ao.name||"TBC",cobj[1]);
+      let t = "AO SET TO "+cobj[1].toUpperCase();
+      if(window.confirm("Replace the LOCATION list with "+cobj[1]+" and its "+regs.length+" regions?\n\n(Press Cancel to keep the existing list. You can do this later with the POPULATE button.)")){
+        await populate(); t += " — LOCATION LIST POPULATED";
+      }
+      setMsg({ok:true,t:t});
+    }catch(e){ setMsg({ok:false,t:"COULD NOT SAVE: "+((e&&e.message)||"error")}); }
+  };
+  const clearAo = async () => {
+    if(!window.confirm("Reset the AO to 'TBC LOCATION' (clock back to 00:00:00)?")) return;
+    await db.ref("settings/ao").remove();
+    auditNow("AO","AREA OF OPERATIONS","country",ao.name||"",""); setMsg({ok:true,t:"AO RESET TO TBC"});
+  };
+  const setEvac = v => { db.ref("settings/evacOpen").set(v); auditNow("AO","EVAC EDITING","everyone",String(evacOpen),String(v)); };
+  return (
+    <div style={panelSt}>
+      <div style={{fontSize:"11px",color:A.dim,letterSpacing:"1px",marginBottom:"10px"}}>
+        CURRENT: <span style={{color:ao.country?A.gold:A.orange}}>{ao.name?ao.name.toUpperCase()+" ("+ao.tz+")":"TBC LOCATION — clock shows 00:00:00"}</span>
+      </div>
+      <div style={{...labSt,marginTop:0}}>COUNTRY</div>
+      <select value={cc} onChange={e=>pickCountry(e.target.value)} style={{...inputSt,maxWidth:"420px"}}>
+        <option value="">— SELECT COUNTRY —</option>
+        {G.countries.map(c=><option key={c[0]} value={c[0]}>{c[1]}</option>)}
+      </select>
+      {tzs.length>1&&<>
+        <div style={labSt}>TIME ZONE (THIS COUNTRY HAS SEVERAL)</div>
+        <select value={tz} onChange={e=>setTz(e.target.value)} style={{...inputSt,maxWidth:"420px"}}>{tzs.map(z=><option key={z} value={z}>{z}</option>)}</select>
+      </>}
+      {cobj&&<div style={{fontSize:"10px",color:A.dim,letterSpacing:"1px",marginTop:"8px"}}>{regs.length} built-in regions available for this country. More places can be added from the AO Map tab (free OpenStreetMap search).</div>}
+      {msg&&<div style={{marginTop:"12px",fontSize:"11px",letterSpacing:"1px",color:msg.ok?A.green:A.red}}>{msg.ok?"✔ ":"⚠ "}{msg.t}</div>}
+      <div style={{marginTop:"14px",display:"flex",flexWrap:"wrap",gap:"8px"}}>
+        <button style={btnSt()} onClick={apply}>APPLY COUNTRY</button>
+        <button style={btnSt(A.blue)} disabled={!cobj} onClick={()=>{ if(window.confirm("Replace the LOCATION list with the regions of "+(cobj&&cobj[1])+"?")) populate().then(()=>setMsg({ok:true,t:"LOCATION LIST POPULATED"})); }}>POPULATE LOCATION LIST FROM REGIONS</button>
+        <button style={btnSt(A.dim)} onClick={clearAo}>RESET TO TBC</button>
+      </div>
+      <div style={{...labSt,marginTop:"20px"}}>EVAC PAC LIST EDITING</div>
+      <label style={{display:"flex",alignItems:"center",gap:"8px",fontSize:"11px",letterSpacing:"1px",color:"#d4dde8",cursor:"pointer"}}>
+        <input type="checkbox" checked={evacOpen} onChange={e=>setEvac(e.target.checked)}/> Everyone can edit the EVAC list (untick: only admins and people with the EVAC function)
+      </label>
+    </div>
+  );
+}
+
+// ───────── CREATE USER ─────────
+function CreateUser({me,onCreated}){
+  const [nu,setNu] = useState("");
+  const [np,setNp] = useState("");
+  const [nm,setNm] = useState("");
+  const [rk,setRk] = useState("");
+  const [role,setRole] = useState("user");
+  const [onBoard,setOnBoard] = useState(true);
+  const [perms,setPerms] = useState({});
+  const [idle,setIdle] = useState(DEFAULT_IDLE);
+  const [msg,setMsg] = useState(null);
+  const [busy,setBusy] = useState(false);
+  const [made,setMade] = useState(null);
+  const create = async () => {
+    setMsg(null);
+    const uname = nu.trim().toLowerCase();
+    const name = nm.trim().toUpperCase().slice(0,25);
+    if(!USER_RE.test(uname)) return setMsg({ok:false,t:"USERNAME: 3-30 CHARACTERS — a-z 0-9 . _ - ONLY"});
+    if(np.length<10) return setMsg({ok:false,t:"PASSWORD MUST BE AT LEAST 10 CHARACTERS"});
+    if(!name) return setMsg({ok:false,t:"ENTER THE PERSON'S DISPLAY NAME (shown on the board)"});
+    if(!rk) return setMsg({ok:false,t:"SELECT A RANK"});
+    const idleN = parseInt(idle,10);
+    if(!(idleN>=0&&idleN<=1440)) return setMsg({ok:false,t:"IDLE TIMEOUT MUST BE 0-1440 MINUTES (0 = NEVER)"});
+    setBusy(true);
+    try{
+      const uid = await createAuthUser(uname,np);
+      const r = rankObj(rk);
+      const pm = {}; PERM_DEFS.forEach(([k])=>{ pm[k]=!!perms[k]; });
+      const ups = {};
+      ups["users/"+uid] = {username:uname,role:role,disabled:false,name:name,rank:r.code,rankOrder:r.order,onBoard:onBoard,perms:pm,idleMin:idleN,createdAt:SV(),createdBy:me.uid};
+      ups["roster/"+uid] = {name:name,rank:r.code,rankOrder:r.order,onBoard:onBoard};
+      await db.ref().update(ups);
+      auditNow("ADMIN","USER "+uname,"created","",role.toUpperCase()+" / "+r.code+" "+name);
+      setMade({u:uname,p:np});
+      setNu(""); setNp(""); setNm(""); setRk(""); setRole("user"); setPerms({}); setIdle(DEFAULT_IDLE); setOnBoard(true);
+      setMsg({ok:true,t:"USER CREATED"});
+      if(onCreated) onCreated();
+    }catch(e){ setMsg({ok:false,t:createErr(e)}); }
+    setBusy(false);
+  };
+  return (
+    <div style={{...panelSt,maxWidth:"620px"}}>
+      {made&&<div style={{marginBottom:"14px",padding:"12px",border:"1px solid "+A.green,background:A.green+"11",fontSize:"12px",letterSpacing:"1px",lineHeight:"1.8"}}>
+        <div style={{color:A.green}}>✔ GIVE THESE DETAILS TO THE USER — THE PASSWORD IS NOT SHOWN AGAIN</div>
+        USERNAME: <b style={{color:"#fff"}}>{made.u}</b><br/>PASSWORD: <b style={{color:"#fff"}}>{made.p}</b>
+        <div style={{marginTop:"8px"}}>
+          <button style={smallBtn(A.gold)} onClick={()=>{ try{navigator.clipboard.writeText("Username: "+made.u+"\nPassword: "+made.p);}catch(e){} }}>COPY</button>
+          <button style={smallBtn(A.dim)} onClick={()=>setMade(null)}>DISMISS</button>
+        </div>
+      </div>}
+      <div style={{...labSt,marginTop:0}}>USERNAME (LOGIN)</div>
+      <input style={inputSt} value={nu} onChange={e=>setNu(e.target.value)} autoComplete="off" autoCapitalize="none" spellCheck={false} placeholder="e.g. j.smith"/>
+      <div style={labSt}>PASSWORD (MIN 10 CHARS — YOU SET IT, THE USER CAN CHANGE IT LATER)</div>
+      <div style={{display:"flex",gap:"8px"}}>
+        <input style={inputSt} value={np} onChange={e=>setNp(e.target.value)} autoComplete="off" spellCheck={false}/>
+        <button onClick={()=>setNp(genPw())} style={{...btnSt(A.dim),whiteSpace:"nowrap"}}>GENERATE</button>
+      </div>
+      <div style={{display:"flex",gap:"12px",flexWrap:"wrap"}}>
+        <div style={{flex:"1 1 200px"}}><div style={labSt}>DISPLAY NAME (ON BOARD)</div><input style={inputSt} value={nm} onChange={e=>setNm(e.target.value)} maxLength={25} placeholder="e.g. SMITH"/></div>
+        <div style={{flex:"1 1 200px"}}><div style={labSt}>RANK</div>
+          <select style={inputSt} value={rk} onChange={e=>setRk(e.target.value)}><option value="">— SELECT RANK —</option>{RANKS.map(r=><option key={r.code} value={r.code}>{r.code} — {r.name}</option>)}</select></div>
+      </div>
+      <div style={{display:"flex",gap:"12px",flexWrap:"wrap"}}>
+        <div style={{flex:"1 1 200px"}}><div style={labSt}>ACCESS LEVEL</div>
+          <select style={inputSt} value={role} onChange={e=>setRole(e.target.value)}>
+            <option value="user">USER — cannot see the Admin tab</option>
+            <option value="admin">ADMIN — full access incl. Admin tab</option>
+          </select></div>
+        <div style={{flex:"1 1 200px"}}><div style={labSt}>IDLE LOGOUT (MINUTES, 0 = NEVER)</div><input style={inputSt} type="number" min="0" max="1440" value={idle} onChange={e=>setIdle(e.target.value)}/></div>
+      </div>
+      <div style={labSt}>FUNCTIONS (TICK ANY)</div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:"6px 18px"}}>
+        {PERM_DEFS.map(([k,l])=>(
+          <label key={k} style={{display:"flex",alignItems:"center",gap:"6px",fontSize:"11px",letterSpacing:"1px",color:"#d4dde8",cursor:"pointer"}}>
+            <input type="checkbox" checked={!!perms[k]} onChange={e=>setPerms(p=>({...p,[k]:e.target.checked}))}/> {l}
+          </label>
+        ))}
+      </div>
+      <label style={{display:"flex",alignItems:"center",gap:"6px",marginTop:"12px",fontSize:"11px",letterSpacing:"1px",color:"#d4dde8",cursor:"pointer"}}>
+        <input type="checkbox" checked={onBoard} onChange={e=>setOnBoard(e.target.checked)}/> SHOW THIS PERSON ON THE BOARD
+      </label>
+      {msg&&<div style={{marginTop:"12px",fontSize:"11px",letterSpacing:"1px",color:msg.ok?A.green:A.red}}>{msg.ok?"✔ ":"⚠ "}{msg.t}</div>}
+      <button onClick={create} disabled={busy} style={{...btnSt(),marginTop:"16px",opacity:busy?0.5:1}}>{busy?"CREATING...":"CREATE USER"}</button>
+    </div>
+  );
+}
+
+// ───────── ONE USER CARD (edit rank / functions / timeout, disable, reset login) ─────────
+function UserCard({uid,u,pres,online,self,me,activeAdmins,onIssued}){
+  const sig = JSON.stringify([u.name,u.rank,u.onBoard,u.perms,u.idleMin]);
+  const [name,setName] = useState(u.name||"");
+  const [rank,setRank] = useState(u.rank||"");
+  const [onBoard,setOnBoard] = useState(u.onBoard!==false);
+  const [perms,setPerms] = useState(u.perms||{});
+  const [idle,setIdle] = useState(u.idleMin==null?DEFAULT_IDLE:u.idleMin);
+  const [msg,setMsg] = useState(null);
+  const [reset,setReset] = useState(false);
+  const [rn,setRn] = useState("");
+  const [rp,setRp] = useState("");
+  const [busy,setBusy] = useState(false);
+  const [made,setMade] = useState(null);
+  useEffect(()=>{ setName(u.name||""); setRank(u.rank||""); setOnBoard(u.onBoard!==false); setPerms(u.perms||{}); setIdle(u.idleMin==null?DEFAULT_IDLE:u.idleMin); },[sig]);
+  const dirty = name!==(u.name||"") || rank!==(u.rank||"") || onBoard!==(u.onBoard!==false) || JSON.stringify(PERM_DEFS.map(([k])=>!!perms[k]))!==JSON.stringify(PERM_DEFS.map(([k])=>!!(u.perms||{})[k])) || String(idle)!==String(u.idleMin==null?DEFAULT_IDLE:u.idleMin);
+  const save = async () => {
+    setMsg(null);
+    const nm = name.trim().toUpperCase().slice(0,25);
+    const idleN = parseInt(idle,10);
+    if(!nm) return setMsg({ok:false,t:"NAME CANNOT BE EMPTY"});
+    if(!(idleN>=0&&idleN<=1440)) return setMsg({ok:false,t:"IDLE TIMEOUT MUST BE 0-1440"});
+    const r = rankObj(rank), pm = {}; PERM_DEFS.forEach(([k])=>{ pm[k]=!!perms[k]; });
+    const ups = {};
+    ups["users/"+uid+"/name"]=nm; ups["users/"+uid+"/rank"]=r.code; ups["users/"+uid+"/rankOrder"]=r.order;
+    ups["users/"+uid+"/onBoard"]=onBoard; ups["users/"+uid+"/perms"]=pm; ups["users/"+uid+"/idleMin"]=idleN;
+    ups["roster/"+uid]={name:nm,rank:r.code,rankOrder:r.order,onBoard:onBoard};
+    try{
+      await db.ref().update(ups);
+      const was = [u.rank,u.name,JSON.stringify(u.perms||{}),u.idleMin,u.onBoard].join(" | ");
+      auditNow("ADMIN","USER "+u.username,"edited",was,[r.code,nm,JSON.stringify(pm),idleN,onBoard].join(" | "));
+      setMsg({ok:true,t:"SAVED"});
+    }catch(e){ setMsg({ok:false,t:"SAVE FAILED"}); }
+  };
+  const toggleDisabled = () => {
+    if(!u.disabled && u.role==="admin" && activeAdmins<=1) return window.alert("You cannot disable the only active admin. Create a second admin first.");
+    if(!window.confirm((u.disabled?"Re-enable ":"Disable ")+u.username+"?")) return;
+    db.ref("users/"+uid+"/disabled").set(!u.disabled);
+    auditNow("ADMIN","USER "+u.username,"disabled",String(!!u.disabled),String(!u.disabled));
+  };
+  const toggleRole = () => {
+    const to = u.role==="admin"?"user":"admin";
+    if(to==="user" && activeAdmins<=1) return window.alert("You cannot demote the only admin. Create a second admin first.");
+    if(!window.confirm("Change "+u.username+" to "+to.toUpperCase()+"?")) return;
+    db.ref("users/"+uid+"/role").set(to);
+    auditNow("ADMIN","USER "+u.username,"role",u.role,to);
+  };
+  const openReset = () => {
+    const m = u.username.match(/^(.*?)(\d*)$/); const base = m[1]; const n = (parseInt(m[2],10)||1)+1;
+    setRn((base+n).slice(0,30)); setRp(genPw()); setReset(true); setMade(null); setMsg(null);
+  };
+  const doReset = async () => {
+    setMsg(null);
+    const nn = rn.trim().toLowerCase();
+    if(!USER_RE.test(nn)) return setMsg({ok:false,t:"USERNAME: 3-30 CHARACTERS — a-z 0-9 . _ - ONLY"});
+    if(rp.length<10) return setMsg({ok:false,t:"PASSWORD MUST BE AT LEAST 10 CHARACTERS"});
+    if(!window.confirm("Issue a NEW login ("+nn+") for "+u.name+" and permanently retire '"+u.username+"'? Their name, rank, functions and board line carry over.")) return;
+    setBusy(true);
+    try{
+      const [rs,bs] = await Promise.all([db.ref("roster/"+uid).once("value"), db.ref("board/"+uid).once("value")]);
+      const nuid = await createAuthUser(nn,rp);
+      const ups = {};
+      ups["users/"+nuid] = {...u, username:nn, disabled:false, createdAt:SV(), createdBy:me.uid, resetFrom:uid};
+      ups["users/"+uid+"/disabled"] = true;
+      ups["users/"+uid+"/replacedBy"] = nuid;
+      ups["roster/"+nuid] = rs.val() || {name:u.name,rank:u.rank,rankOrder:u.rankOrder||0,onBoard:u.onBoard!==false};
+      ups["roster/"+uid] = null;
+      ups["board/"+nuid] = bs.val() || null;
+      ups["board/"+uid] = null;
+      await db.ref().update(ups);
+      auditNow("ADMIN","USER "+u.username,"login reset","old login retired","new username "+nn);
+      if(onIssued) onIssued({u:nn,p:rp,name:u.name}); setReset(false);
+    }catch(e){ setMsg({ok:false,t:createErr(e)}); }
+    setBusy(false);
+  };
+  const chip = (t,c) => <span style={{border:"1px solid "+c+"88",color:c,fontSize:"10px",letterSpacing:"1px",padding:"2px 7px",marginRight:"6px"}}>{t}</span>;
+  return (
+    <div style={{...panelSt,marginBottom:"10px",borderLeft:"3px solid "+(u.disabled?A.red:(online?A.green:A.line))}}>
+      <div style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:"6px 12px",marginBottom:"10px"}}>
+        <span style={{color:"#fff",fontSize:"14px",letterSpacing:"2px"}}>{u.username}{self&&<span style={{color:A.dim}}> (you)</span>}</span>
+        {chip(u.role==="admin"?"ADMIN":"USER",u.role==="admin"?A.gold:A.dim)}
+        {u.disabled?chip("DISABLED",A.red):chip("ACTIVE",A.green)}
+        {online?chip("● ONLINE",A.green):chip("○ OFFLINE",A.dim)}
+      </div>
+      <div style={{fontSize:"10px",color:A.dim,letterSpacing:"1px",lineHeight:"1.8",marginBottom:"10px"}}>
+        LAST LOGIN: <span style={{color:"#d4dde8"}}>{fmtZ(pres&&pres.lastLogin)}</span> &nbsp;·&nbsp; LAST LOGOUT: <span style={{color:"#d4dde8"}}>{fmtZ(pres&&pres.lastLogout)}</span> &nbsp;·&nbsp; LAST SEEN: <span style={{color:"#d4dde8"}}>{fmtZ(pres&&pres.lastSeen)}</span>
+      </div>
+      <div style={{display:"flex",gap:"10px",flexWrap:"wrap"}}>
+        <div style={{flex:"1 1 160px"}}><div style={{...labSt,marginTop:0}}>DISPLAY NAME</div><input style={inputSt} value={name} maxLength={25} onChange={e=>setName(e.target.value)}/></div>
+        <div style={{flex:"1 1 160px"}}><div style={{...labSt,marginTop:0}}>RANK</div>
+          <select style={inputSt} value={rank} onChange={e=>setRank(e.target.value)}>{RANKS.map(r=><option key={r.code} value={r.code}>{r.code} — {r.name}</option>)}</select></div>
+        <div style={{flex:"0 1 130px"}}><div style={{...labSt,marginTop:0}}>IDLE LOGOUT (MIN)</div><input style={inputSt} type="number" min="0" max="1440" value={idle} onChange={e=>setIdle(e.target.value)}/></div>
+      </div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:"6px 16px",marginTop:"12px"}}>
+        {PERM_DEFS.map(([k,l])=>(
+          <label key={k} style={{display:"flex",alignItems:"center",gap:"5px",fontSize:"10px",letterSpacing:"1px",color:"#d4dde8",cursor:"pointer"}}>
+            <input type="checkbox" checked={!!perms[k]} onChange={e=>setPerms(p=>({...p,[k]:e.target.checked}))}/> {l}
+          </label>
+        ))}
+        <label style={{display:"flex",alignItems:"center",gap:"5px",fontSize:"10px",letterSpacing:"1px",color:"#d4dde8",cursor:"pointer"}}>
+          <input type="checkbox" checked={onBoard} onChange={e=>setOnBoard(e.target.checked)}/> SHOWN ON BOARD
+        </label>
+      </div>
+      <div style={{marginTop:"12px"}}>
+        {dirty&&<button style={smallBtn(A.green)} onClick={save}>SAVE CHANGES</button>}
+        {!self&&<button style={smallBtn(u.disabled?A.green:A.red)} onClick={toggleDisabled}>{u.disabled?"ENABLE":"DISABLE"}</button>}
+        {!self&&<button style={smallBtn(A.gold)} onClick={toggleRole}>{u.role==="admin"?"MAKE USER":"MAKE ADMIN"}</button>}
+        {!u.disabled&&!reset&&<button style={smallBtn(A.orange)} onClick={openReset}>RESET LOGIN (FORGOTTEN PASSWORD)</button>}
+      </div>
+      {reset&&<div style={{marginTop:"10px",padding:"12px",border:"1px solid "+A.orange+"88",background:A.orange+"0d"}}>
+        <div style={{fontSize:"10px",color:A.orange,letterSpacing:"2px",marginBottom:"8px"}}>ISSUE A NEW LOGIN — THE OLD ONE IS RETIRED. NAME, RANK, FUNCTIONS AND BOARD LINE CARRY OVER.</div>
+        <div style={{display:"flex",gap:"10px",flexWrap:"wrap"}}>
+          <div style={{flex:"1 1 160px"}}><div style={{...labSt,marginTop:0}}>NEW USERNAME</div><input style={inputSt} value={rn} onChange={e=>setRn(e.target.value)} autoCapitalize="none" spellCheck={false}/></div>
+          <div style={{flex:"1 1 200px"}}><div style={{...labSt,marginTop:0}}>NEW PASSWORD</div>
+            <div style={{display:"flex",gap:"6px"}}><input style={inputSt} value={rp} onChange={e=>setRp(e.target.value)} spellCheck={false}/><button style={btnSt(A.dim)} onClick={()=>setRp(genPw())}>NEW</button></div></div>
+        </div>
+        <div style={{marginTop:"10px"}}>
+          <button style={smallBtn(A.orange)} disabled={busy} onClick={doReset}>{busy?"WORKING...":"CONFIRM RESET"}</button>
+          <button style={smallBtn(A.dim)} onClick={()=>setReset(false)}>CANCEL</button>
+        </div>
+      </div>}
+      {made&&<div style={{marginTop:"10px",padding:"12px",border:"1px solid "+A.green,background:A.green+"11",fontSize:"12px",letterSpacing:"1px",lineHeight:"1.8"}}>
+        <div style={{color:A.green}}>✔ NEW DETAILS — NOT SHOWN AGAIN</div>
+        USERNAME: <b style={{color:"#fff"}}>{made.u}</b><br/>PASSWORD: <b style={{color:"#fff"}}>{made.p}</b>
+        <div style={{marginTop:"6px"}}><button style={smallBtn(A.gold)} onClick={()=>{ try{navigator.clipboard.writeText("Username: "+made.u+"\nPassword: "+made.p);}catch(e){} }}>COPY</button><button style={smallBtn(A.dim)} onClick={()=>setMade(null)}>DISMISS</button></div>
+      </div>}
+      {msg&&<div style={{marginTop:"8px",fontSize:"11px",letterSpacing:"1px",color:msg.ok?A.green:A.red}}>{msg.ok?"✔ ":"⚠ "}{msg.t}</div>}
+    </div>
+  );
+}
+
+// ───────── ACTIVITY LOGS + MONTHLY WIPE ─────────
+function LogManager({users}){
+  const [view,setView] = useState("logins");
+  const [logs,setLogs] = useState([]);
+  const [chg,setChg] = useState([]);
+  const [flt,setFlt] = useState("");
+  const [oldest,setOldest] = useState(null);
+  const [dl,setDl] = useState(false);
+  const [busy,setBusy] = useState(false);
+  const [msg,setMsg] = useState(null);
+  useEffect(()=>{
+    const r1=db.ref("logs").orderByKey().limitToLast(300), r2=db.ref("changes").orderByKey().limitToLast(300);
+    const r3=db.ref("logs").orderByChild("ts").limitToFirst(1), r4=db.ref("changes").orderByChild("ts").limitToFirst(1);
+    const arr = s => { const a=[]; s.forEach(ch=>{ a.push({id:ch.key,...ch.val()}); }); return a.reverse(); };
+    let o1=null,o2=null;
+    const setO = () => setOldest(Math.min(o1==null?Infinity:o1, o2==null?Infinity:o2)===Infinity?null:Math.min(o1==null?Infinity:o1, o2==null?Infinity:o2));
+    const c1=s=>setLogs(arr(s)), c2=s=>setChg(arr(s));
+    const c3=s=>{ o1=null; s.forEach(ch=>{ o1=ch.val().ts; }); setO(); };
+    const c4=s=>{ o2=null; s.forEach(ch=>{ o2=ch.val().ts; }); setO(); };
+    r1.on("value",c1); r2.on("value",c2); r3.on("value",c3); r4.on("value",c4);
+    return ()=>{ r1.off("value",c1); r2.off("value",c2); r3.off("value",c3); r4.off("value",c4); };
+  },[]);
+  const now = new Date();
+  const monthStart = Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),1);
+  const due = oldest!=null && oldest<monthStart;
+  const soon = now.getUTCDate()>=25;
+  const names = Object.values(users).filter(x=>x&&x.username).map(x=>x.username).sort();
+  const evLab = t => ({login:"LOGGED IN",logout:"LOGGED OUT",timeout:"AUTO LOGOUT (IDLE)",disconnect:"DISCONNECTED / PAGE CLOSED",blocked:"LOGIN BLOCKED (DISABLED/UNAUTHORISED)",wipe:"MONTHLY LOG WIPE"})[t]||t;
+  const evCol = t => t==="login"?A.green:(t==="timeout"||t==="blocked"?A.red:(t==="disconnect"?A.orange:A.gold));
+  const exportAll = async () => {
+    setBusy(true); setMsg(null);
+    try{
+      const [a,b] = await Promise.all([db.ref("logs").orderByChild("ts").once("value"), db.ref("changes").orderByChild("ts").once("value")]);
+      const rows=[["record","time_utc","username","event_or_area","target","field","from","to"]];
+      a.forEach(c=>{ const v=c.val(); rows.push(["LOGIN-LOG",v.ts?new Date(v.ts).toISOString():"",v.username,v.type,"","","",""]); });
+      b.forEach(c=>{ const v=c.val(); rows.push(["CHANGE",v.ts?new Date(v.ts).toISOString():"",v.username,v.area,v.target,v.field,v.from,v.to]); });
+      downloadText("move-track-audit-"+new Date().toISOString().slice(0,10)+".csv",rows.map(r=>r.map(csvCell).join(",")).join("\r\n"));
+      setDl(true); setMsg({ok:true,t:"DOWNLOADED "+(rows.length-1)+" RECORDS"});
+    }catch(e){ setMsg({ok:false,t:"EXPORT FAILED"}); }
+    setBusy(false);
+  };
+  const wipe = async () => {
+    if(!dl && !window.confirm("You have not downloaded the logs this session. Wipe anyway? This cannot be undone.")) return;
+    if(!window.confirm("Permanently delete all log and change records BEFORE "+fmtZ(monthStart)+" ?")) return;
+    setBusy(true); setMsg(null);
+    try{
+      const [a,b] = await Promise.all([db.ref("logs").orderByChild("ts").endAt(monthStart-1).once("value"), db.ref("changes").orderByChild("ts").endAt(monthStart-1).once("value")]);
+      const keys=[]; a.forEach(c=>{ keys.push("logs/"+c.key); }); b.forEach(c=>{ keys.push("changes/"+c.key); });
+      for(let i=0;i<keys.length;i+=400){ const ups={}; keys.slice(i,i+400).forEach(k=>{ ups[k]=null; }); await db.ref().update(ups); }
+      const me = window.MT_ME;
+      await db.ref("logs").push().set({uid:me.uid,username:me.username,type:"wipe",ts:SV()});
+      setMsg({ok:true,t:"WIPED "+keys.length+" RECORDS"}); setDl(false);
+    }catch(e){ setMsg({ok:false,t:"WIPE FAILED"}); }
+    setBusy(false);
+  };
+  const th = {textAlign:"left",padding:"8px 10px",fontSize:"10px",letterSpacing:"2px",color:A.dim,borderBottom:"1px solid "+A.line,fontWeight:"normal",whiteSpace:"nowrap",position:"sticky",top:0,background:A.panel};
+  const td = {padding:"7px 10px",fontSize:"11px",letterSpacing:"1px",borderBottom:"1px solid "+A.line+"88",whiteSpace:"nowrap"};
+  const shownL = logs.filter(l=>!flt||l.username===flt), shownC = chg.filter(l=>!flt||l.username===flt);
+  return (
+    <div>
+      {(due||soon)&&<div style={{padding:"12px 14px",marginBottom:"12px",border:"1px solid "+(due?A.red:A.orange),background:(due?A.red:A.orange)+"14",color:due?A.red:A.orange,fontSize:"11px",letterSpacing:"1px",lineHeight:"1.7"}}>
+        {due?"⚠ MONTHLY WIPE DUE — records from before "+fmtZ(monthStart)+" are ready to be wiped. DOWNLOAD THE LOGS FIRST, then wipe."
+            :"⚠ MONTHLY WIPE ON THE 1ST — download this month's logs now if you need them."}
+      </div>}
+      <div style={{display:"flex",gap:"8px",alignItems:"center",flexWrap:"wrap",marginBottom:"10px"}}>
+        <button style={btnSt(view==="logins"?A.gold:A.dim)} onClick={()=>setView("logins")}>LOGINS / LOGOUTS</button>
+        <button style={btnSt(view==="changes"?A.gold:A.dim)} onClick={()=>setView("changes")}>CHANGES (WHO EDITED WHAT)</button>
+        <select value={flt} onChange={e=>setFlt(e.target.value)} style={{...inputSt,width:"auto",minWidth:"160px"}}>
+          <option value="">ALL USERS</option>{names.map(n=><option key={n} value={n}>{n}</option>)}
+        </select>
+        <button style={btnSt(A.blue)} disabled={busy} onClick={exportAll}>⬇ DOWNLOAD ALL (CSV)</button>
+        <button style={btnSt(A.red)} disabled={busy||!due} onClick={wipe}>WIPE PREVIOUS MONTHS</button>
+      </div>
+      <div style={{fontSize:"10px",color:A.dim,letterSpacing:"1px",marginBottom:"8px"}}>OLDEST RECORD: {fmtZ(oldest)} · SHOWING THE LATEST 300 OF EACH · THE WIPE BUTTON UNLOCKS ONCE A NEW MONTH BEGINS</div>
+      {msg&&<div style={{marginBottom:"8px",fontSize:"11px",letterSpacing:"1px",color:msg.ok?A.green:A.red}}>{msg.ok?"✔ ":"⚠ "}{msg.t}</div>}
+      <div style={{overflow:"auto",border:"1px solid "+A.line,background:A.panel,maxHeight:"460px"}}>
+        {view==="logins"?<table style={{borderCollapse:"collapse",width:"100%"}}>
+          <thead><tr><th style={th}>TIME (ZULU)</th><th style={th}>USER</th><th style={th}>EVENT</th></tr></thead>
+          <tbody>
+            {shownL.length===0&&<tr><td style={td} colSpan={3}>No activity recorded yet.</td></tr>}
+            {shownL.map(l=><tr key={l.id}><td style={td}>{fmtZ(l.ts)}</td><td style={{...td,color:"#fff"}}>{l.username}</td><td style={{...td,color:evCol(l.type)}}>{evLab(l.type)}</td></tr>)}
+          </tbody></table>
+        :<table style={{borderCollapse:"collapse",width:"100%"}}>
+          <thead><tr><th style={th}>TIME (ZULU)</th><th style={th}>USER</th><th style={th}>AREA</th><th style={th}>TARGET</th><th style={th}>FIELD</th><th style={th}>FROM</th><th style={th}>TO</th></tr></thead>
+          <tbody>
+            {shownC.length===0&&<tr><td style={td} colSpan={7}>No changes recorded yet.</td></tr>}
+            {shownC.map(l=><tr key={l.id}><td style={td}>{fmtZ(l.ts)}</td><td style={{...td,color:"#fff"}}>{l.username}</td><td style={{...td,color:A.gold}}>{l.area}</td><td style={td}>{l.target}</td><td style={td}>{l.field}</td><td style={{...td,color:A.dim}}>{l.from||"—"}</td><td style={{...td,color:A.green}}>{l.to||"—"}</td></tr>)}
+          </tbody></table>}
+      </div>
+    </div>
+  );
+}
+
+// ───────── ADMIN TAB ─────────
+function AdminTab({me,ao,evacOpen}){
+  const [users,setUsers] = useState({});
+  const [pres,setPres] = useState({});
+  const [skew,setSkew] = useState(0);
+  const [tick,setTick] = useState(0);
+  const [issued,setIssued] = useState(null);
+  useEffect(()=>{
+    const r1=db.ref("users"), r2=db.ref("presence"), r4=db.ref(".info/serverTimeOffset");
+    const c1=s=>setUsers(s.val()||{}), c2=s=>setPres(s.val()||{}), c4=s=>setSkew(s.val()||0);
+    r1.on("value",c1); r2.on("value",c2); r4.on("value",c4);
+    const t=setInterval(()=>setTick(x=>x+1),15000);
+    return ()=>{ r1.off("value",c1); r2.off("value",c2); r4.off("value",c4); clearInterval(t); };
+  },[]);
+  const nowS = Date.now()+skew; void tick;
+  const isOnline = pr => !!(pr && pr.online===true && pr.lastSeen && (nowS-pr.lastSeen)<150000);
+  const list = Object.entries(users).filter(([k,v])=>v&&v.username&&!v.replacedBy).sort((a,b)=>(b[1].rankOrder||0)-(a[1].rankOrder||0)||a[1].username.localeCompare(b[1].username));
+  const retired = Object.entries(users).filter(([k,v])=>v&&v.replacedBy).length;
+  const activeAdmins = Object.values(users).filter(v=>v&&v.role==="admin"&&!v.disabled).length;
+  return (
+    <div style={{fontFamily:A.mono,color:"#d4dde8"}}>
+      {activeAdmins<2&&<div style={{padding:"12px 14px",marginBottom:"14px",border:"1px solid "+A.orange,background:A.orange+"14",color:A.orange,fontSize:"11px",letterSpacing:"1px",lineHeight:"1.7"}}>
+        ⚠ ONLY {activeAdmins} ACTIVE ADMIN ACCOUNT. Create a second (backup) admin below — if the only admin forgets their password, nobody can manage users on the free plan.
+      </div>}
+      <div style={{...secT2,marginTop:0}}>AREA OF OPERATIONS</div>
+      <AoPanel ao={ao} evacOpen={evacOpen}/>
+      <div style={secT2}>CREATE USER</div>
+      <CreateUser me={me}/>
+      <div style={secT2}>USERS ({list.length}){retired>0?" · "+retired+" RETIRED LOGINS HIDDEN":""}</div>
+      {issued&&<div style={{marginBottom:"12px",padding:"12px",border:"1px solid "+A.green,background:A.green+"11",fontSize:"12px",letterSpacing:"1px",lineHeight:"1.8"}}>
+        <div style={{color:A.green}}>✔ LOGIN RESET FOR {issued.name} — GIVE THESE DETAILS TO THEM. THE PASSWORD IS NOT SHOWN AGAIN.</div>
+        USERNAME: <b style={{color:"#fff"}}>{issued.u}</b><br/>PASSWORD: <b style={{color:"#fff"}}>{issued.p}</b>
+        <div style={{marginTop:"6px"}}><button style={smallBtn(A.gold)} onClick={()=>{ try{navigator.clipboard.writeText("Username: "+issued.u+"\nPassword: "+issued.p);}catch(e){} }}>COPY</button><button style={smallBtn(A.dim)} onClick={()=>setIssued(null)}>DISMISS</button></div>
+      </div>}
+      {list.length===0&&<div style={{fontSize:"11px",color:A.dim,letterSpacing:"1px"}}>No users yet.</div>}
+      {list.map(([uid,u])=><UserCard key={uid} uid={uid} u={u} pres={pres[uid]} online={isOnline(pres[uid])} self={uid===me.uid} me={me} activeAdmins={activeAdmins} onIssued={setIssued}/>)}
+      <div style={{fontSize:"10px",color:A.dim,letterSpacing:"1px",marginTop:"8px",lineHeight:"1.6"}}>"Last seen" updates every minute while a user has the app open. OFFLINE means the page was closed, connection was lost, or they logged out.</div>
+      <div style={secT2}>ACTIVITY LOG</div>
+      <LogManager users={users}/>
+    </div>
+  );
+}
+
+// ───────── ROOT: login gate, session audit, idle timeout ─────────
+function Root(){
+  const [ready,setReady] = useState(false);
+  const [user,setUser] = useState(null);
+  const [profile,setProfile] = useState(null);
+  const [notice,setNotice] = useState("");
+  const [showAcct,setShowAcct] = useState(false);
+  const sess = useRef({});
+
+  const endSession = async (type) => {
+    const s = sess.current;
+    if(!s||!s.uid) return;
+    sess.current = {};
+    clearInterval(s.hb);
+    try{ s.conn.off("value",s.onConn); }catch(e){}
+    try{ if(s.dc) s.dc.onDisconnect().cancel(); s.pres.onDisconnect().cancel(); }catch(e){}
+    if(type){
+      try{
+        await Promise.race([
+          Promise.all([
+            db.ref("logs").push().set({uid:s.uid,username:s.uname,type:type,ts:SV()}),
+            s.pres.update({online:false,lastLogout:SV(),lastSeen:SV()})
+          ]),
+          new Promise(r=>setTimeout(r,4000))
+        ]);
+      }catch(e){}
+    }
+  };
+  const doSignOut = async () => { window.MT_ME = null; try{ await window.auth.signOut(); }catch(e){} };
+  const logout = async (type,msg) => {
+    await endSession(type||"logout");
+    if(msg) setNotice(msg);
+    setProfile(null);
+    await doSignOut();
+  };
+  const forceOut = async (msg) => {
+    await endSession(null);
+    setNotice(msg); setProfile(null);
+    await doSignOut();
+  };
+  const login = async (username,password) => {
+    setNotice("");
+    await window.auth.setPersistence(firebase.auth.Auth.Persistence.NONE);   // session lives in memory only: refresh = log in again
+    await window.auth.signInWithEmailAndPassword(toEmail(username),password);
+  };
+
+  useEffect(()=>{
+    if(!cfgOk()){ setReady(true); return; }
+    window.auth.setPersistence(firebase.auth.Auth.Persistence.NONE).catch(()=>{});
+    return window.auth.onAuthStateChanged(u=>{
+      setUser(u||null);
+      if(!u) setProfile(null);
+      setReady(true);
+    });
+  },[]);
+
+  // Own profile: role, permissions, disabled flag. Admin changes apply live.
+  useEffect(()=>{
+    if(!user) return;
+    const ref = db.ref("users/"+user.uid);
+    const cb = snap => {
+      const p = snap.val();
+      if(!p) forceOut("NO ACCESS — THIS ACCOUNT IS NOT AUTHORISED");
+      else if(p.disabled===true){
+        db.ref("logs").push().set({uid:user.uid,username:p.username||"?",type:"blocked",ts:SV()}).catch(()=>{});
+        forceOut("ACCOUNT DISABLED — CONTACT ADMIN");
+      } else { window.MT_ME = {uid:user.uid,username:p.username}; setProfile(p); }
+    };
+    ref.on("value",cb,()=>forceOut("ACCESS DENIED"));
+    return ()=>ref.off("value",cb);
+  },[user&&user.uid]);
+
+  // Session audit: login record, presence, heartbeat, disconnect record
+  useEffect(()=>{
+    if(!user||!profile) return;
+    const uid=user.uid, uname=profile.username;
+    const pres=db.ref("presence/"+uid), conn=db.ref(".info/connected");
+    let first=true;
+    const onConn = snap => {
+      if(snap.val()!==true) return;
+      if(first){
+        first=false;
+        db.ref("logs").push().set({uid:uid,username:uname,type:"login",ts:SV()});
+        pres.update({username:uname,lastLogin:SV()});
+      }
+      const dc = db.ref("logs").push();
+      dc.onDisconnect().set({uid:uid,username:uname,type:"disconnect",ts:SV()});
+      pres.onDisconnect().update({online:false,lastSeen:SV()});
+      pres.update({online:true,lastSeen:SV()});
+      sess.current.dc = dc;
+    };
+    const hb = setInterval(()=>pres.update({lastSeen:SV()}),60000);
+    sess.current = {uid:uid,uname:uname,pres:pres,conn:conn,onConn:onConn,hb:hb,dc:null};
+    conn.on("value",onConn);
+    return ()=>{ clearInterval(hb); try{conn.off("value",onConn);}catch(e){} };
+  },[user&&user.uid, profile&&profile.username]);
+
+  // Idle auto-logout (minutes set per user by the admin; 0 = never)
+  const idleMin = profile ? (profile.idleMin==null?DEFAULT_IDLE:profile.idleMin) : 0;
+  useEffect(()=>{
+    if(!user||!profile||!idleMin) return;
+    let last = Date.now();
+    const bump = ()=>{ last=Date.now(); };
+    const evs = ["mousemove","keydown","touchstart","click","scroll"];
+    evs.forEach(e=>window.addEventListener(e,bump,{passive:true}));
+    const t = setInterval(()=>{ if(Date.now()-last>idleMin*60000) logout("timeout","LOGGED OUT — INACTIVE FOR "+idleMin+" MINUTES"); },15000);
+    return ()=>{ evs.forEach(e=>window.removeEventListener(e,bump)); clearInterval(t); };
+  },[user&&user.uid, !!profile, idleMin]);
+
+  if(!cfgOk()) return <SetupNeeded/>;
+  if(!ready) return <Splash text="STARTING..."/>;
+  if(!user) return <LoginScreen notice={notice} onLogin={login}/>;
+  if(!profile) return <Splash text="VERIFYING ACCESS..."/>;
+  return (
+    <>
+      <App user={user} profile={profile} onLogout={()=>logout("logout")} onAccount={()=>setShowAcct(true)}/>
+      {showAcct&&<AccountModal user={user} profile={profile} onClose={()=>setShowAcct(false)}/>}
+    </>
+  );
+}
+
+// MAIN APP
+function App({user,profile,onLogout,onAccount}){
+  const myUid = user.uid;
+  const isAdmin = profile.role==="admin";
+  const perms = profile.perms||{};
+  const [roster,setRoster] = useState({});
+  const [board,setBoard] = useState({});
+  const [ao,setAo] = useState({});
+  const [evacOpen,setEvacOpen] = useState(true);
+  const [dbErr,setDbErr] = useState("");
+  const [locs,setLocs] = useState(DEFAULT_LOCS);
+  const [locs2,setLocs2] = useState(DEFAULT_LOCS2);
+  const [statuses,setStatuses] = useState(DEFAULT_STATUSES);
+  const [newStatus,setNewStatus] = useState("");
+  const [newLoc2,setNewLoc2] = useState("");
+  const [vehicles,setVehicles] = useState(()=>Array.from({length:100},(_,i)=>({id:i+1,make:"",model:"",colour:"",vrn:"",name:"",location:"",purpose:"",dateon:"",mileageon:""})));
+  const [fuelCards,setFuelCards] = useState(()=>Array.from({length:30},(_,i)=>({id:i+1,cardnum:"",name:"",notes:"",location:""})));
+  const [tab,setTab] = useState("board");
+  const [newLoc,setNewLoc] = useState("");
+  const [bhr,setBhr] = useState(bhrNow());
+  const [zulu,setZulu] = useState(zuluNow());
+  const [connected,setConnected] = useState(false);
+  const [picker,setPicker] = useState(null);
+  const [vehDatePicker,setVehDatePicker] = useState(null); // {idx}
+  const [rooms,setRooms] = useState({});
+  const [fpNums,setFpNums] = useState({});
+  const [evacData,setEvacData] = useState({});
+  const [installable,setInstallable] = useState(!!window.deferredInstallPrompt);
+  const [installed,setInstalled] = useState(false);
+  const [wipeFlag,setWipeFlag] = useState(null); // admin only: "due" | "soon" | null
+
+  // Who can edit what (the database rules enforce the same thing server-side)
+  const locsUnlocked = isAdmin;
+  const canEditOthers = isAdmin || !!perms.editOthers;
+  const canVeh = isAdmin || !!perms.vehicles;
+  const canRooms = isAdmin || !!perms.rooms;
+  const canFp = isAdmin || !!perms.fp;
+  const canEvac = isAdmin || !!perms.evac || evacOpen;
+
+  // Board rows come from the roster (one line per person), highest rank first
+  const rows = Object.entries(roster)
+    .filter(([uid,r])=>r&&r.name&&r.onBoard!==false)
+    .map(([uid,r])=>({uid:uid,name:r.name,rank:r.rank||"",rankOrder:r.rankOrder||0,location:"",location2:"",status:"",dueBack:"",dueDate:"",notes:"",...(board[uid]||{})}))
+    .sort((a,b)=>b.rankOrder-a.rankOrder||a.name.localeCompare(b.name));
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
+
+  useEffect(()=>{
+    if(window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone){
+      setInstalled(true);
+    }
+    window.addEventListener('pwa-installable',()=>setInstallable(true));
+    window.addEventListener('appinstalled',()=>{setInstalled(true);setInstallable(false);});
+  },[]);
+
+  useEffect(()=>{
+    const clk = setInterval(()=>{setBhr(bhrNow());setZulu(zuluNow());},1000);
+    const err = e => setDbErr((e&&e.message)||"Database error");
+    const subs = [];
+    const on = (path,cb) => { const r=db.ref(path); r.on("value",cb,err); subs.push([r,cb]); };
+    on("roster",snap=>{ setRoster(snap.val()||{}); setConnected(true); });
+    on("board",snap=>{ setBoard(snap.val()||{}); });
+    on("locations",snap=>{ const v=snap.val(); if(Array.isArray(v)&&v.length>0)setLocs(v); });
+    on("locations2",snap=>{
+      const v=snap.val();
+      const a = Array.isArray(v) ? v.filter(Boolean) : (v ? Object.values(v) : []);
+      setLocs2(a.sort((x,y)=>String(x).localeCompare(String(y))));
+    });
+    on("statuses",snap=>{ const v=snap.val(); if(Array.isArray(v)&&v.length>0)setStatuses(v); });
+    on("vehicles",snap=>{
+      const data=snap.val()||{};
+      setVehicles(Array.from({length:100},(_,i)=>({id:i+1,make:"",model:"",colour:"",vrn:"",name:"",location:"",purpose:"",dateon:"",mileageon:"",...(data[i]||{})})));
+    });
+    on("fuelcards",snap=>{
+      const data=snap.val()||{};
+      setFuelCards(Array.from({length:30},(_,i)=>({id:i+1,cardnum:"",name:"",notes:"",location:"",...(data[i]||{})})));
+    });
+    on("rooms",snap=>{ setRooms(snap.val()||{}); });
+    on("fpnumbers",snap=>{ setFpNums(snap.val()||{}); });
+    on("evac",snap=>{ setEvacData(snap.val()||{}); });
+    on("settings",snap=>{
+      const v=snap.val()||{}; const a=v.ao||{};
+      AO.tz = a.tz||"UTC"; AO.set = !!a.country;
+      setAo(a); setEvacOpen(v.evacOpen!==false);
+      setBhr(bhrNow());
+    });
+    return()=>{ clearInterval(clk); subs.forEach(([r,cb])=>r.off("value",cb)); };
+  },[]);
+
+  // Admins get a reminder about the monthly log wipe on every tab
+  useEffect(()=>{
+    if(!isAdmin) return;
+    const r1=db.ref("logs").orderByChild("ts").limitToFirst(1), r2=db.ref("changes").orderByChild("ts").limitToFirst(1);
+    let o1=null,o2=null;
+    const calc = () => {
+      const n=new Date(), ms=Date.UTC(n.getUTCFullYear(),n.getUTCMonth(),1);
+      const o=[o1,o2].filter(x=>x!=null); const old=o.length?Math.min.apply(null,o):null;
+      setWipeFlag(old!=null&&old<ms?"due":(n.getUTCDate()>=25&&old!=null?"soon":null));
+    };
+    const c1=s=>{ o1=null; s.forEach(ch=>{ o1=ch.val().ts; }); calc(); };
+    const c2=s=>{ o2=null; s.forEach(ch=>{ o2=ch.val().ts; }); calc(); };
+    r1.on("value",c1,()=>{}); r2.on("value",c2,()=>{});
+    return ()=>{ r1.off("value",c1); r2.off("value",c2); };
+  },[isAdmin]);
+
+  // Change audit: waits 1s after the last keystroke, then records one "from → to" entry
+  const auditT = useRef({});
+  const audit = (area,target,field,oldV,newV) => {
+    const k=area+"|"+target+"|"+field, t=auditT.current;
+    if(t[k]) clearTimeout(t[k].tm); else t[k]={oldV:oldV};
+    t[k].newV=newV;
+    t[k].tm=setTimeout(()=>{ const e=t[k]; delete t[k]; if(String(e.oldV==null?"":e.oldV)===String(e.newV==null?"":e.newV)) return; auditNow(area,target,field,e.oldV,e.newV); },1000);
+  };
+
+  const rowName = uid => { const r=rowsRef.current.find(x=>x.uid===uid); return r?r.name:uid; };
+  const writeBoard = (uid,u) => {
+    if(!(uid===myUid||canEditOthers)) return;
+    const r=rowsRef.current.find(x=>x.uid===uid)||{};
+    Object.keys(u).forEach(k=>audit("BOARD",rowName(uid),k,r[k],u[k]));
+    db.ref("board/"+uid).update(u);
+  };
+  const updateRow = (uid,field,val) => {
+    const u={}; u[field]=val;
+    if(field==="status"&&val==="IN"){u.dueBack="";u.dueDate="";}
+    writeBoard(uid,u);
+  };
+  const addLocation2 = name => {
+    const n=String(name||"").trim().toUpperCase().slice(0,40); if(!n) return;
+    if(locs2.map(x=>String(x).toUpperCase()).includes(n)) return;
+    db.ref("locations2/"+keyOf(n)).set(n);
+    auditNow("LOCATIONS","LOCATION LIST","add","",n);
+  };
+  const setPersonLocation = (uid,name) => { addLocation2(name); updateRow(uid,"location2",String(name).trim().toUpperCase().slice(0,40)); };
+
+  const writeLocs = l => db.ref("locations").set(l);
+  const writeStatuses = s => db.ref("statuses").set(s);
+  const writeRoom = (name,val) => { const k=name.replace(/[^a-zA-Z0-9]/g,"_"); if(!canRooms)return; audit("ROOMS",name,"room",rooms[k],val); db.ref("rooms/"+k).set(val); };
+  const writeFP = (name,val) => { const k=name.replace(/[^a-zA-Z0-9]/g,"_"); if(!canFp)return; audit("FP NUMBERS",name,"fp number",fpNums[k],val); db.ref("fpnumbers/"+k).set(val); };
+  const writeEvac = (vehIdx,field,val) => { if(!canEvac)return; const old=(evacData["v"+vehIdx]||{})[field]; audit("EVAC","VEH "+(vehIdx+1),field,old,val); const u={}; u[field]=val; db.ref("evac/v"+vehIdx).update(u); };
+  const writeVehicle = (i,f,v) => { if(!canVeh)return; const cur=vehicles[i]||{}; audit("VEHICLES","VEH "+(i+1)+(cur.vrn?" "+cur.vrn:""),f,cur[f],v); const u={}; u[f]=v; db.ref("vehicles/"+i).update(u); };
+  const writeFuelCard = (i,f,v) => { if(!canVeh)return; const cur=fuelCards[i]||{}; audit("FUEL CARDS","CARD "+(i+1)+(cur.cardnum?" "+cur.cardnum:""),f,cur[f],v); const u={}; u[f]=v; db.ref("fuelcards/"+i).update(u); };
+
+  const addLoc = () => {
+    if(!locsUnlocked)return;
+    const v=newLoc.trim().toUpperCase();
+    if(!v||locs.includes(v))return;
+    const next=[...locs,v]; setLocs(next); writeLocs(next); setNewLoc(""); auditNow("LOCATIONS","BED DOWN LIST","add","",v);
+  };
+  const addStatus = () => {
+    if(!locsUnlocked)return;
+    const v=newStatus.trim().toUpperCase();
+    if(!v||statuses.includes(v))return;
+    const next=[...statuses,v]; setStatuses(next); writeStatuses(next); setNewStatus(""); auditNow("LOCATIONS","STATUS LIST","add","",v);
+  };
+  const removeStatus = st => {
+    if(!locsUnlocked)return;
+    const next=statuses.filter(s=>s!==st); setStatuses(next); writeStatuses(next); auditNow("LOCATIONS","STATUS LIST","remove",st,"");
+    rowsRef.current.forEach(r=>{ if(r.status===st)db.ref("board/"+r.uid).update({status:""}); });
+  };
+  const addLoc2 = () => {
+    if(!locsUnlocked)return;
+    addLocation2(newLoc2); setNewLoc2("");
+  };
+  const removeLoc2 = loc => {
+    if(!locsUnlocked)return;
+    db.ref("locations2/"+keyOf(loc)).remove();
+    auditNow("LOCATIONS","LOCATION LIST","remove",loc,"");
+    rowsRef.current.forEach(r=>{ if(r.location2===loc)db.ref("board/"+r.uid).update({location2:""}); });
+  };
+  const removeLoc = loc => {
+    if(!locsUnlocked)return;
+    const next=locs.filter(l=>l!==loc); setLocs(next); writeLocs(next); auditNow("LOCATIONS","BED DOWN LIST","remove",loc,"");
+    rowsRef.current.forEach(r=>{ if(r.location===loc)db.ref("board/"+r.uid).update({location:""}); });
+  };
+
+  const locColorMap = {};
+  locs.forEach((l,i)=>{ const c=PAL[i%PAL.length]; locColorMap[l]={color:c,bg:c+"22"}; });
+  locColorMap[""]={color:"#5a6a7a",bg:"transparent"};
+  const loc2ColorMap = {};
+  locs2.forEach((l,i)=>{ const c=PAL[(i+5)%PAL.length]; loc2ColorMap[l]={color:c,bg:c+"22"}; });
+  loc2ColorMap[""]={color:"#5a6a7a",bg:"transparent"};
+
+  const sCounts={},lCounts={},l2Counts={};let filled=0,odCount=0;
+  rows.forEach(r=>{
+    if(r.name)filled++;
+    if(isOvd(r))odCount++;
+    if(r.status)sCounts[r.status]=(sCounts[r.status]||0)+1;
+    if(r.location)lCounts[r.location]=(lCounts[r.location]||0)+1;
+    if(r.location2)l2Counts[r.location2]=(l2Counts[r.location2]||0)+1;
+  });
+  const odRows = rows.filter(r=>r.name&&isOvd(r));
+
+  const f = { mono:"'Share Tech Mono',monospace", sans:"'Barlow Condensed',sans-serif" };
+  const s = {
+    wrap:{background:"#080a0d",minHeight:"100vh",color:"#d4dde8",fontFamily:f.mono,fontSize:"13px"},
+    header:{background:"#0d1117",borderBottom:"2px solid #c9a84c",padding:"14px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:"12px"},
+    title:{fontFamily:f.sans,fontWeight:"900",fontSize:"26px",letterSpacing:"5px",color:"#fff",textTransform:"uppercase"},
+    gold:{color:"#c9a84c"},
+    sub:{fontSize:"9px",color:"#5a6a7a",letterSpacing:"3px",marginTop:"3px",textTransform:"uppercase"},
+    cw:{textAlign:"right"},
+    bhrC:{fontFamily:f.sans,fontSize:"38px",fontWeight:"900",color:"#c9a84c",letterSpacing:"3px",lineHeight:"1"},
+    bhrL:{fontSize:"9px",color:"#c9a84c",letterSpacing:"3px",marginTop:"2px"},
+    zulC:{fontSize:"11px",color:"#5a6a7a",letterSpacing:"2px",marginTop:"4px"},
+    fill:{color:"#c9a84c",fontSize:"11px",letterSpacing:"2px",marginTop:"4px"},
+    tabs:{display:"flex",borderBottom:"1px solid #1e2630",background:"#0a0c0f",flexWrap:"wrap"},
+    tab:a=>({background:a?"#0f1318":"transparent",border:"none",borderBottom:a?"2px solid #c9a84c":"2px solid transparent",color:a?"#c9a84c":"#5a6a7a",fontFamily:f.mono,fontSize:"11px",letterSpacing:"2px",padding:"11px 20px",cursor:"pointer",textTransform:"uppercase",marginBottom:"-1px"}),
+    body:{padding:"14px 20px"},
+    sr:{display:"flex",gap:"8px",marginBottom:"10px",flexWrap:"wrap"},
+    sc:c=>({background:"#0f1318",border:"1px solid "+c+"33",padding:"7px 12px",display:"flex",alignItems:"center",gap:"7px"}),
+    sn:c=>({fontSize:"20px",fontWeight:"bold",color:c,fontFamily:f.mono}),
+    sl:{fontSize:"9px",color:"#5a6a7a",letterSpacing:"1px",textTransform:"uppercase"},
+    alert:{background:"rgba(231,76,60,0.1)",border:"1px solid #e74c3c",borderLeft:"4px solid #e74c3c",padding:"10px 16px",marginBottom:"12px",animation:"alertpulse 1.5s infinite"},
+    aTitle:{color:"#e74c3c",fontSize:"10px",letterSpacing:"3px",marginBottom:"8px"},
+    aTag:{display:"inline-block",background:"rgba(231,76,60,0.2)",border:"1px solid rgba(231,76,60,0.5)",color:"#ff8a80",padding:"3px 8px",fontSize:"11px",marginRight:"6px",marginBottom:"4px"},
+    tw:{background:"#0f1318",border:"1px solid #1e2630",overflowX:"auto"},
+    th:{background:"#0d1117",borderBottom:"1px solid #7a6330",color:"#c9a84c",fontSize:"9px",letterSpacing:"3px",padding:"10px 12px",textAlign:"left",fontWeight:"normal",whiteSpace:"nowrap",textTransform:"uppercase"},
+    td:{padding:"8px 12px",verticalAlign:"middle"},
+    inp:{background:"transparent",border:"none",borderBottom:"1px solid #1e2630",color:"#fff",fontFamily:f.mono,fontSize:"12px",padding:"3px 4px",outline:"none",width:"100%",minWidth:"110px",textTransform:"uppercase"},
+    sel:(val,map)=>({appearance:"none",WebkitAppearance:"none",background:map[val]?map[val].bg||"#0a0c0f":"#0a0c0f",border:"1px solid "+(map[val]?map[val].color||"#1e2630":"#1e2630")+"55",color:map[val]?map[val].color||"#5a6a7a":"#5a6a7a",fontFamily:f.mono,fontSize:"11px",padding:"4px 6px",cursor:"pointer",outline:"none",width:"100%",borderRadius:"0"}),
+    tBtn:dis=>({background:dis?"transparent":"#080a0d",border:"1px solid "+(dis?"#1e2630":"#c9a84c55"),color:dis?"#2a3440":"#c9a84c",fontFamily:f.mono,fontSize:"11px",padding:"4px 7px",cursor:dis?"not-allowed":"pointer",letterSpacing:"1px",minWidth:"100px",textAlign:"center",lineHeight:"1.4"}),
+    ni2:{background:"transparent",border:"none",borderBottom:"1px solid transparent",color:"#5a6a7a",fontFamily:f.mono,fontSize:"11px",padding:"3px 4px",outline:"none",width:"100%",minWidth:"100px"},
+    badge:{background:"#e74c3c",color:"#fff",fontSize:"8px",padding:"1px 5px",marginLeft:"4px",letterSpacing:"1px",verticalAlign:"middle"},
+    odT:{color:"#e74c3c",fontSize:"10px",marginLeft:"4px"},
+    footer:{marginTop:"16px",paddingTop:"10px",borderTop:"1px solid #1e2630",fontSize:"10px",color:"#5a6a7a",letterSpacing:"1px",display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:"4px"},
+    addRow:{display:"flex",gap:"8px",marginBottom:"6px"},
+    addInp:{flex:"1",background:"#0f1318",border:"1px solid #1e2630",color:"#fff",fontFamily:f.mono,fontSize:"13px",padding:"9px 12px",outline:"none",textTransform:"uppercase"},
+    addBtn:{background:"rgba(201,168,76,0.1)",border:"1px solid #c9a84c",color:"#c9a84c",fontFamily:f.mono,fontSize:"12px",letterSpacing:"2px",padding:"9px 16px",cursor:"pointer"},
+    locGrid:{display:"flex",flexWrap:"wrap",gap:"8px",marginTop:"16px"},
+    locChip:c=>({background:c+"14",border:"1px solid "+c+"44",color:c,fontFamily:f.mono,fontSize:"12px",letterSpacing:"1px",padding:"7px 12px",display:"flex",alignItems:"center",gap:"8px"}),
+    rmBtn:{background:"transparent",border:"none",color:"#e74c3c",cursor:"pointer",fontSize:"14px",padding:"0",lineHeight:"1"},
+    hint:{marginBottom:"16px",fontSize:"11px",color:"#5a6a7a",letterSpacing:"1px"},
+    secT:{margin:"18px 0 10px",fontSize:"10px",color:"#c9a84c",letterSpacing:"3px"},
+    warn:{marginTop:"16px",background:"rgba(231,76,60,0.06)",border:"1px solid rgba(231,76,60,0.2)",padding:"10px 14px",fontSize:"11px",color:"#8a9aaa"},
+    dh:{color:"#2a3440",cursor:"grab",fontSize:"16px",padding:"0 4px",userSelect:"none",WebkitUserSelect:"none"},
+    conn:{textAlign:"center",padding:"60px 20px",color:"#5a6a7a",fontSize:"12px",letterSpacing:"3px"},
+  };
+
+  const SDEFS=[{key:"IN",label:"In Loc",color:"#2ecc71"},{key:"OUT",label:"Out",color:"#e74c3c"},{key:"R&R",label:"R&R",color:"#3498db"},{key:"MEDICAL",label:"Medical",color:"#f39c12"},{key:"TASKING",label:"Tasking",color:"#9b59b6"},{key:"TOTAL",label:"Total",color:"#c9a84c"},{key:"OVERDUE",label:"Overdue",color:"#e74c3c"}];
+
+
+
+  if(!connected) return (
+    <div style={s.wrap}>
+      <div style={s.header}>
+        <div><div style={s.title}>MOVING <span style={s.gold}>&</span> TRACKING</div><div style={s.sub}>BDL Status Board // Live Personnel Tracking</div></div>
+        <div style={s.cw}><div style={s.bhrC}>{bhr}</div><div style={s.bhrL}>{ao.name?ao.name.toUpperCase()+" LOCAL":"TBC LOCATION"}</div><div style={s.zulC}>ZULU: {zulu}</div></div>
+      </div>
+      <div style={s.conn}><div style={{width:"30px",height:"30px",border:"2px solid #1e2630",borderTopColor:"#c9a84c",borderRadius:"50%",animation:"spin .8s linear infinite",margin:"0 auto 16px"}}/>CONNECTING TO DATABASE...{dbErr&&<div style={{color:"#e74c3c",marginTop:"14px",fontSize:"11px",letterSpacing:"1px"}}>⚠ {dbErr}</div>}<div style={{marginTop:"16px"}}><button onClick={onLogout} style={{background:"transparent",border:"1px solid #1e2630",color:"#8a9aaa",fontFamily:f.mono,fontSize:"10px",letterSpacing:"2px",padding:"6px 12px",cursor:"pointer"}}>LOG OUT</button></div></div>
+    </div>
+  );
+
+  return (
+    <div style={s.wrap}>
+      <div style={s.header}>
+        <div><div style={s.title}>MOVING <span style={s.gold}>&</span> TRACKING</div><div style={s.sub}>BDL Status Board // Live Personnel Tracking</div></div>
+        <div style={s.cw}>
+          <div style={s.bhrC}>{bhr}</div><div style={s.bhrL}>{ao.name?ao.name.toUpperCase()+" LOCAL":"TBC LOCATION"}</div><div style={s.zulC}>ZULU: {zulu}</div>
+          <div style={s.fill}>{filled} ON BOARD{odCount>0&&<span style={{color:"#e74c3c",marginLeft:"8px"}}>⚠ {odCount} OVERDUE</span>}</div>
+          <div style={{marginTop:"6px",fontSize:"10px",letterSpacing:"2px",color:"#5a6a7a"}}>
+            {profile.rank?profile.rank+" ":""}{profile.name||profile.username} · {isAdmin?"ADMIN":"USER"}
+            <button onClick={onAccount} style={{marginLeft:"10px",background:"transparent",border:"1px solid #1e2630",color:"#8a9aaa",fontFamily:f.mono,fontSize:"9px",letterSpacing:"2px",padding:"3px 7px",cursor:"pointer"}}>PASSWORD</button>
+            <button onClick={onLogout} style={{marginLeft:"6px",background:"rgba(231,76,60,0.1)",border:"1px solid rgba(231,76,60,0.4)",color:"#e74c3c",fontFamily:f.mono,fontSize:"9px",letterSpacing:"2px",padding:"3px 7px",cursor:"pointer"}}>LOG OUT</button>
+          </div>
+        </div>
+      </div>
+
+      <div style={s.tabs}>
+        {isAdmin&&<button style={s.tab(tab==="admin")} onClick={()=>setTab("admin")}>🛡 Admin{wipeFlag==="due"&&<span style={s.badge}>WIPE</span>}</button>}
+        <button style={s.tab(tab==="board")} onClick={()=>setTab("board")}>Board</button>
+        <button style={s.tab(tab==="locs")} onClick={()=>setTab("locs")}>BDL Status & Locations</button>
+        <button style={s.tab(tab==="vehicles")} onClick={()=>setTab("vehicles")}>Vehicles</button>
+        <button style={s.tab(tab==="fuelcards")} onClick={()=>setTab("fuelcards")}>Fuel Cards</button>
+        <button style={s.tab(tab==="install")} onClick={()=>setTab("install")}>📲 Install</button>
+        <button style={s.tab(tab==="rooms")} onClick={()=>setTab("rooms")}>BDL Rooms</button>
+        <button style={s.tab(tab==="fp")} onClick={()=>setTab("fp")}>FP Numbers</button>
+        <button style={s.tab(tab==="evac")} onClick={()=>setTab("evac")}>EVAC Pac List</button>
+        <button style={s.tab(tab==="map")} onClick={()=>setTab("map")}>🗺 AO Map</button>
+      </div>
+
+      <div style={s.body}>
+        {isAdmin&&wipeFlag&&tab!=="admin"&&<div onClick={()=>setTab("admin")} style={{cursor:"pointer",marginBottom:"12px",padding:"9px 14px",border:"1px solid "+(wipeFlag==="due"?"#e74c3c":"#e67e22"),background:(wipeFlag==="due"?"rgba(231,76,60,0.1)":"rgba(230,126,34,0.1)"),color:wipeFlag==="due"?"#e74c3c":"#e67e22",fontSize:"11px",letterSpacing:"1px"}}>⚠ {wipeFlag==="due"?"MONTHLY LOG WIPE IS DUE":"MONTHLY LOG WIPE ON THE 1ST"} — open the Admin tab and DOWNLOAD THE LOGS first.</div>}
+        {tab==="admin"&&isAdmin&&<AdminTab me={user} ao={ao} evacOpen={evacOpen}/>}
+
+        {tab==="board"&&<>
+          <div style={s.sr}>{SDEFS.map(({key,label,color})=>{const n=key==="TOTAL"?filled:key==="OVERDUE"?odCount:(sCounts[key]||0);return <div key={key} style={s.sc(color)}><div style={{width:7,height:7,borderRadius:"50%",background:n>0?color:"#2a3440",flexShrink:0,boxShadow:key==="OVERDUE"&&n>0?"0 0 6px "+color:undefined}}/><div><div style={s.sn(n>0?color:"#fff")}>{n}</div><div style={s.sl}>{label}</div></div></div>;})} </div>
+          <div style={{...s.sr,marginBottom:"4px"}}>{locs.map((l,i)=>{const c=PAL[i%PAL.length],n=lCounts[l]||0;return <div key={l} style={s.sc(c)}><div style={{width:7,height:7,borderRadius:"50%",background:n>0?c:"#2a3440",flexShrink:0}}/><div><div style={s.sn(n>0?c:"#fff")}>{n}</div><div style={s.sl}>{l}</div></div></div>;})} </div>
+          {Object.keys(l2Counts).length>0&&<div style={{...s.sr,marginBottom:"14px"}}>{locs2.map((l,i)=>{const c=PAL[(i+5)%PAL.length],n=l2Counts[l]||0;if(!n)return null;return <div key={l} style={s.sc(c)}><div style={{width:7,height:7,borderRadius:"50%",background:n>0?c:"#2a3440",flexShrink:0}}/><div><div style={s.sn(n>0?c:"#fff")}>{n}</div><div style={s.sl}>{l}</div></div></div>;})} </div>}
+          {odRows.length>0&&<div style={s.alert}><div style={s.aTitle}>⚠ OVERDUE PERSONNEL DETECTED</div><div>{odRows.map((r,i)=><span key={i} style={s.aTag}>{r.name} — {ovdStr(r)}</span>)}</div></div>}
+          <div style={s.tw}>
+            <table style={{width:"100%",borderCollapse:"collapse"}}>
+              <thead><tr>{["#","Rank","Name","Bed Down Loc","Status","Location","Due Back (LOCAL)","Notes"].map(h=><th key={h} style={s.th}>{h}</th>)}</tr></thead>
+              <tbody>
+                {rows.length===0&&<tr><td colSpan={8} style={{...s.td,color:"#5a6a7a",letterSpacing:"1px",padding:"24px"}}>{isAdmin?"No personnel yet — create users in the Admin tab and they appear here, sorted by rank.":"No personnel on the board yet."}</td></tr>}
+                {rows.map((r,i)=>{
+                  const od=isOvd(r),dis=r.status==="IN"||r.status==="";
+                  const dl=r.dueBack?(r.dueDate?r.dueDate+" "+r.dueBack:r.dueBack):"— : —";
+                  const mine=r.uid===myUid, canRow=mine||canEditOthers;
+                  const lock={opacity:canRow?1:0.8,cursor:canRow?"pointer":"default"};
+                  return <tr key={r.uid}
+                    style={{background:od?"rgba(231,76,60,0.07)":(mine?"rgba(201,168,76,0.05)":"transparent"),borderBottom:"1px solid rgba(30,38,48,0.7)"}}>
+                    <td style={{...s.td,color:"#5a6a7a",fontSize:"11px",width:"28px"}}>{String(i+1).padStart(2,"0")}</td>
+                    <td style={{...s.td,color:"#c9a84c",fontSize:"11px",letterSpacing:"1px",whiteSpace:"nowrap"}}>{r.rank}</td>
+                    <td style={{...s.td,minWidth:"130px",color:"#fff",letterSpacing:"1px"}}>{r.name}{mine&&<span style={{color:"#5a6a7a",fontSize:"10px"}}> (YOU)</span>}{od&&<><span style={s.badge}>OVRD</span><span style={s.odT}>{ovdStr(r)}</span></>}</td>
+                    <td style={{...s.td,minWidth:"110px"}}><select disabled={!canRow} style={{...s.sel(r.location,locColorMap),...lock}} value={r.location} onChange={e=>updateRow(r.uid,"location",e.target.value)}><option value="">—</option>{locs.map(l=><option key={l} value={l}>{l}</option>)}</select></td>
+                    <td style={{...s.td,minWidth:"100px"}}><select disabled={!canRow} style={{...s.sel(r.status,Object.fromEntries(statuses.map(st=>[st,statusColor(st)]).concat([["",{color:"#5a6a7a",bg:"transparent"}]]))),...lock}} value={r.status} onChange={e=>updateRow(r.uid,"status",e.target.value)}><option value="">—</option>{statuses.map(st=><option key={st} value={st}>{st}</option>)}</select></td>
+                    <td style={{...s.td,minWidth:"110px"}}>
+                      <select disabled={!canRow} style={{...s.sel(r.location2,loc2ColorMap),...lock}} value={r.location2||""} onChange={e=>updateRow(r.uid,"location2",e.target.value)}>
+                        <option value="">—</option>
+                        {locs2.map(l=><option key={l} value={l}>{l}</option>)}
+                        {r.location2&&!locs2.includes(r.location2)&&<option value={r.location2}>{r.location2}</option>}
+                      </select>
+                    </td>
+                    <td style={s.td}><button disabled={!canRow} style={s.tBtn(dis||!canRow)} onClick={()=>!dis&&canRow&&setPicker({idx:r.uid,time:r.dueBack||"00:00",date:r.dueDate||""})}>{dl}</button></td>
+                    <td style={{...s.td,minWidth:"110px"}}><input disabled={!canRow} style={s.ni2} value={r.notes} placeholder="—" onChange={e=>updateRow(r.uid,"notes",e.target.value)} maxLength={80}/></td>
+                  </tr>;
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div style={s.footer}><span style={{color:"#2ecc71"}}>⬤ LIVE</span><span>{ao.name?ao.name.toUpperCase():"TBC LOCATION"} TIME // {rows.length} PERSONNEL // {canEditOthers?"YOU CAN EDIT ANY LINE":"YOU CAN EDIT YOUR OWN LINE"}</span></div>
+        </>}
+
+        {tab==="locs"&&<>
+          <div style={{display:"flex",alignItems:"center",gap:"12px",marginBottom:"16px",flexWrap:"wrap"}}>
+            <span style={{fontSize:"11px",color:"#5a6a7a",letterSpacing:"1px"}}>{locsUnlocked?"🔓 ADMIN — EDIT MODE":"🔒 READ ONLY — ONLY ADMINS CAN CHANGE THESE LISTS"}</span>
+          </div>
+
+          {/* BED DOWN LOCATION SECTION */}
+          <div style={{...s.secT,marginTop:"0"}}>BED DOWN LOCATION</div>
+          {locsUnlocked&&<>
+            <div style={s.addRow}>
+              <input style={s.addInp} value={newLoc} placeholder="TYPE NEW BED DOWN LOCATION..." onChange={e=>setNewLoc(e.target.value.toUpperCase())} onKeyDown={e=>e.key==="Enter"&&addLoc()} maxLength={20}/>
+              <button style={s.addBtn} onClick={addLoc}>+ ADD</button>
+            </div>
+            <div style={{fontSize:"10px",color:"#5a6a7a",letterSpacing:"1px",marginBottom:"10px"}}>Press ADD or hit Enter.</div>
+          </>}
+          <div style={s.locGrid}>{locs.map((l,i)=>{const c=PAL[i%PAL.length];return(<div key={l} style={s.locChip(c)}><div style={{width:7,height:7,borderRadius:"50%",background:c,flexShrink:0}}/>{l}{locsUnlocked&&<button style={s.rmBtn} onClick={()=>removeLoc(l)}>✕</button>}</div>);})}</div>
+          <div style={s.warn}>⚠ Removing clears it from any personnel currently assigned to it.</div>
+
+          {/* STATUS SECTION */}
+          <div style={{...s.secT,marginTop:"20px"}}>STATUS</div>
+          {locsUnlocked&&<>
+            <div style={s.addRow}>
+              <input style={s.addInp} value={newStatus} placeholder="TYPE NEW STATUS..." onChange={e=>setNewStatus(e.target.value.toUpperCase())} onKeyDown={e=>e.key==="Enter"&&addStatus()} maxLength={20}/>
+              <button style={s.addBtn} onClick={addStatus}>+ ADD</button>
+            </div>
+            <div style={{fontSize:"10px",color:"#5a6a7a",letterSpacing:"1px",marginBottom:"10px"}}>Press ADD or hit Enter.</div>
+          </>}
+          <div style={s.locGrid}>{statuses.map((st,i)=>{const c=statusColor(st).color;return(<div key={st} style={s.locChip(c)}><div style={{width:7,height:7,borderRadius:"50%",background:c,flexShrink:0}}/>{st}{locsUnlocked&&<button style={s.rmBtn} onClick={()=>removeStatus(st)}>✕</button>}</div>);})}</div>
+          <div style={{...s.warn,marginTop:"8px"}}>⚠ Removing clears it from any personnel currently assigned to it.</div>
+
+          {/* LOCATION SECTION */}
+          <div style={{...s.secT,marginTop:"20px"}}>LOCATION</div>
+          {locsUnlocked&&<>
+            <div style={s.addRow}>
+              <input style={s.addInp} value={newLoc2} placeholder="TYPE NEW LOCATION..." onChange={e=>setNewLoc2(e.target.value.toUpperCase())} onKeyDown={e=>e.key==="Enter"&&addLoc2()} maxLength={40}/>
+              <button style={s.addBtn} onClick={addLoc2}>+ ADD</button>
+            </div>
+            <div style={{fontSize:"10px",color:"#5a6a7a",letterSpacing:"1px",marginBottom:"10px"}}>Press ADD or hit Enter.</div>
+          </>}
+          {locs2.length===0&&<div style={{fontSize:"11px",color:"#5a6a7a",letterSpacing:"1px",padding:"8px 0"}}>{locsUnlocked?"No locations yet — add one above.":"No locations added yet."}</div>}
+          <div style={s.locGrid}>{locs2.map((l,i)=>{const c=PAL[(i+5)%PAL.length];return(<div key={l} style={s.locChip(c)}><div style={{width:7,height:7,borderRadius:"50%",background:c,flexShrink:0}}/>{l}{locsUnlocked&&<button style={s.rmBtn} onClick={()=>removeLoc2(l)}>✕</button>}</div>);})}</div>
+          {locs2.length>0&&<div style={{...s.warn,marginTop:"8px"}}>⚠ Removing clears it from any personnel currently assigned to it.</div>}
+        </>}
+
+        {tab==="vehicles"&&<fieldset disabled={!canVeh}>
+          {!canVeh&&<div style={{marginBottom:"12px",padding:"8px 14px",border:"1px solid #1e2630",background:"#0d1117",color:"#8a9aaa",fontSize:"11px",letterSpacing:"1px"}}>👁 VIEW ONLY — only admins and the vehicles manager can edit this tab.</div>}
+          <div style={s.hint}>VEHICLE REGISTER — 100 SLOTS</div>
+          <div style={s.tw}><table style={{width:"100%",borderCollapse:"collapse"}}>
+            <thead><tr>{["#","Make","Model","Colour","VRN","Name / User","Location","Purpose","Date Taken On","KM On Taking"].map(h=><th key={h} style={s.th}>{h}</th>)}</tr></thead>
+            <tbody>{vehicles.map((v,i)=>(
+              <tr key={i} style={{borderBottom:"1px solid rgba(30,38,48,0.7)"}}>
+                <td style={{...s.td,color:"#5a6a7a",fontSize:"11px",width:"28px"}}>{String(i+1).padStart(2,"0")}</td>
+                {["make","model","colour","vrn"].map(field=>(
+                  <td key={field} style={{...s.td,minWidth:"100px"}}>
+                    <input style={{...s.inp,textTransform:field==="vrn"?"uppercase":"none",letterSpacing:field==="vrn"?"2px":"normal"}} value={v[field]||""} placeholder="—" maxLength={30}
+                      onChange={e=>{const val=field==="vrn"?e.target.value.toUpperCase():e.target.value;e.target.value=val;setVehicles(prev=>{const n=[...prev];n[i]={...n[i],[field]:val};return n;});writeVehicle(i,field,val);}}/>
+                  </td>
+                ))}
+                <td style={{...s.td,minWidth:"130px"}}>
+                  <select value={v.name||""} onChange={e=>{const val=e.target.value;setVehicles(prev=>{const n=[...prev];n[i]={...n[i],name:val};return n;});writeVehicle(i,"name",val);}} style={{appearance:"none",WebkitAppearance:"none",background:"#080a0d",border:"1px solid #1e2630",color:v.name?"#fff":"#5a6a7a",fontFamily:f.mono,fontSize:"11px",padding:"4px 6px",cursor:"pointer",outline:"none",width:"100%",borderRadius:"0"}}>
+                    <option value="">— SELECT —</option>
+                    {rows.filter(r=>r.name).map(r=><option key={r.name} value={r.name}>{r.name}</option>)}
+                  </select>
+                </td>
+                <td style={{...s.td,minWidth:"120px"}}>
+                  <select value={v.location||""} onChange={e=>{const val=e.target.value;setVehicles(prev=>{const n=[...prev];n[i]={...n[i],location:val};return n;});writeVehicle(i,"location",val);}} style={{appearance:"none",WebkitAppearance:"none",background:v.location?locColorMap[v.location]?locColorMap[v.location].bg:"#080a0d":"#080a0d",border:"1px solid "+(v.location?locColorMap[v.location]?locColorMap[v.location].color+"55":"#1e2630":"#1e2630"),color:v.location?locColorMap[v.location]?locColorMap[v.location].color:"#fff":"#5a6a7a",fontFamily:f.mono,fontSize:"11px",padding:"4px 6px",cursor:"pointer",outline:"none",width:"100%",borderRadius:"0"}}>
+                    <option value="">— SELECT —</option>
+                    {locs.map(l=><option key={l} value={l}>{l}</option>)}
+                  </select>
+                </td>
+                {/* PURPOSE — locked to Welfare for specific VRNs */}
+                {(()=>{
+                  const isWelfareLocked = WELFARE_VRNS.includes((v.vrn||"").replace(/\s/g,"").toUpperCase()) || WELFARE_VRNS.includes((v.vrn||"").replace(/\s/g,""));
+                  const purpose = isWelfareLocked ? "WELFARE" : (v.purpose||"");
+                  const pc = PURPOSE_COLOR[purpose]||PURPOSE_COLOR[""];
+                  return <td style={{...s.td,minWidth:"110px"}}>
+                    {isWelfareLocked
+                      ? <div style={{background:"rgba(46,204,113,0.15)",border:"1px solid rgba(46,204,113,0.4)",color:"#2ecc71",fontFamily:f.mono,fontSize:"11px",padding:"5px 8px",letterSpacing:"1px",display:"flex",alignItems:"center",gap:"6px"}}>
+                          <span style={{fontSize:"9px"}}>🔒</span> WELFARE
+                        </div>
+                      : <select value={purpose} onChange={e=>{const val=e.target.value;setVehicles(prev=>{const n=[...prev];n[i]={...n[i],purpose:val};return n;});writeVehicle(i,"purpose",val);}}
+                          style={{appearance:"none",WebkitAppearance:"none",background:pc.bg,border:"1px solid "+(pc.color+"55"),color:pc.color||"#5a6a7a",fontFamily:f.mono,fontSize:"11px",padding:"5px 8px",cursor:"pointer",outline:"none",width:"100%",borderRadius:"0"}}>
+                          {VEHICLE_PURPOSES.map(p=><option key={p} value={p}>{p||"— SELECT —"}</option>)}
+                        </select>
+                    }
+                  </td>;
+                })()}
+                {/* DATE TAKEN ON */}
+                <td style={{...s.td,minWidth:"110px"}}>
+                  <button
+                    onClick={()=>setVehDatePicker({idx:i})}
+                    style={{background:"#080a0d",border:"1px solid "+(v.dateon?"#c9a84c55":"#1e2630"),color:v.dateon?"#c9a84c":"#5a6a7a",fontFamily:f.mono,fontSize:"11px",padding:"5px 8px",cursor:"pointer",letterSpacing:"1px",minWidth:"90px",textAlign:"center"}}>
+                    {v.dateon||"— DATE —"}
+                  </button>
+                </td>
+                {/* KM ON TAKING */}
+                <td style={{...s.td,minWidth:"110px"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:"4px"}}>
+                    <input
+                      style={{...s.inp,textTransform:"none",fontSize:"11px",letterSpacing:"1px",minWidth:"70px"}}
+                      value={v.mileageon||""}
+                      placeholder="e.g. 12450"
+                      maxLength={10}
+                      onChange={e=>{const val=e.target.value.replace(/[^0-9]/g,"");setVehicles(prev=>{const n=[...prev];n[i]={...n[i],mileageon:val};return n;});writeVehicle(i,"mileageon",val);}}/>
+                    <span style={{fontSize:"9px",color:"#5a6a7a",fontFamily:f.mono,flexShrink:0}}>KM</span>
+                  </div>
+                </td>
+              </tr>
+            ))}</tbody>
+          </table></div>
+        </fieldset>}
+
+        {tab==="fuelcards"&&<fieldset disabled={!canVeh}>
+          {!canVeh&&<div style={{marginBottom:"12px",padding:"8px 14px",border:"1px solid #1e2630",background:"#0d1117",color:"#8a9aaa",fontSize:"11px",letterSpacing:"1px"}}>👁 VIEW ONLY — only admins and the vehicles manager can edit this tab.</div>}
+          <div style={s.hint}>FUEL CARD REGISTER — 30 SLOTS</div>
+          <div style={s.tw}><table style={{width:"100%",borderCollapse:"collapse"}}>
+            <thead><tr>{["#","Fuel Card Number","Name / Holder","Notes","Location"].map(h=><th key={h} style={s.th}>{h}</th>)}</tr></thead>
+            <tbody>{fuelCards.map((fc,i)=>(
+              <tr key={i} style={{borderBottom:"1px solid rgba(30,38,48,0.7)"}}>
+                <td style={{...s.td,color:"#5a6a7a",fontSize:"11px",width:"28px"}}>{String(i+1).padStart(2,"0")}</td>
+                <td style={{...s.td,minWidth:"160px"}}><input style={{...s.inp,letterSpacing:"2px"}} value={fc.cardnum||""} placeholder="CARD NUMBER" maxLength={30} onChange={e=>{const val=e.target.value;setFuelCards(prev=>{const n=[...prev];n[i]={...n[i],cardnum:val};return n;});writeFuelCard(i,"cardnum",val);}}/></td>
+                <td style={{...s.td,minWidth:"150px"}}>
+                  <select value={fc.name||""} onChange={e=>{const val=e.target.value;setFuelCards(prev=>{const n=[...prev];n[i]={...n[i],name:val};return n;});writeFuelCard(i,"name",val);}} style={{appearance:"none",WebkitAppearance:"none",background:"#080a0d",border:"1px solid #1e2630",color:fc.name?"#fff":"#5a6a7a",fontFamily:f.mono,fontSize:"11px",padding:"4px 6px",cursor:"pointer",outline:"none",width:"100%",borderRadius:"0"}}>
+                    <option value="">— SELECT —</option>
+                    {rows.filter(r=>r.name).map(r=><option key={r.name} value={r.name}>{r.name}</option>)}
+                  </select>
+                </td>
+                <td style={{...s.td,minWidth:"160px"}}><input style={s.ni2} value={fc.notes||""} placeholder="Notes..." maxLength={80} onChange={e=>{const val=e.target.value;setFuelCards(prev=>{const n=[...prev];n[i]={...n[i],notes:val};return n;});writeFuelCard(i,"notes",val);}}/></td>
+                <td style={{...s.td,minWidth:"120px"}}>
+                  <select value={fc.location||""} onChange={e=>{const val=e.target.value;setFuelCards(prev=>{const n=[...prev];n[i]={...n[i],location:val};return n;});writeFuelCard(i,"location",val);}} style={{appearance:"none",WebkitAppearance:"none",background:fc.location?locColorMap[fc.location]?locColorMap[fc.location].bg:"#080a0d":"#080a0d",border:"1px solid "+(fc.location?locColorMap[fc.location]?locColorMap[fc.location].color+"55":"#1e2630":"#1e2630"),color:fc.location?locColorMap[fc.location]?locColorMap[fc.location].color:"#fff":"#5a6a7a",fontFamily:f.mono,fontSize:"11px",padding:"4px 6px",cursor:"pointer",outline:"none",width:"100%",borderRadius:"0"}}>
+                    <option value="">— SELECT —</option>
+                    {locs.map(l=><option key={l} value={l}>{l}</option>)}
+                  </select>
+                </td>
+              </tr>
+            ))}</tbody>
+          </table></div>
+        </fieldset>}
+
+        {tab==="install"&&<>
+          <div style={{maxWidth:"400px"}}>
+            <div style={{...s.secT,marginTop:"0"}}>INSTALL APP</div>
+            {installed
+              ? <div style={{background:"rgba(46,204,113,0.08)",border:"1px solid rgba(46,204,113,0.3)",padding:"14px 16px",marginBottom:"16px"}}>
+                  <div style={{color:"#2ecc71",fontSize:"12px",letterSpacing:"2px",marginBottom:"6px"}}>✓ APP INSTALLED</div>
+                  <div style={{color:"#5a6a7a",fontSize:"11px",letterSpacing:"1px"}}>Moving & Tracking is installed on this device. Open it from your home screen.</div>
+                </div>
+              : <>
+                  {installable&&<>
+                    <div style={{color:"#5a6a7a",fontSize:"11px",letterSpacing:"1px",marginBottom:"14px",lineHeight:"1.7"}}>Tap the button below to install Moving & Tracking as an app on this device.</div>
+                    <button
+                      onClick={()=>{if(window.deferredInstallPrompt){window.deferredInstallPrompt.prompt();window.deferredInstallPrompt.userChoice.then(r=>{if(r.outcome==="accepted"){setInstalled(true);setInstallable(false);}});}}}
+                      style={{background:"rgba(201,168,76,0.15)",border:"1px solid #c9a84c",color:"#c9a84c",fontFamily:f.mono,fontSize:"13px",letterSpacing:"2px",padding:"12px 24px",cursor:"pointer",width:"100%",marginBottom:"20px"}}
+                    >📲 INSTALL NOW</button>
+                  </>}
+                  <div style={{background:"#0f1318",border:"1px solid #1e2630",padding:"16px",marginBottom:"12px"}}>
+                    <div style={{color:"#c9a84c",fontSize:"10px",letterSpacing:"3px",marginBottom:"10px"}}>ANDROID — CHROME</div>
+                    <div style={{color:"#d4dde8",fontSize:"12px",lineHeight:"1.8",letterSpacing:"0.5px"}}>
+                      1. Tap the <span style={{color:"#c9a84c"}}>⋮</span> menu (top right)<br/>
+                      2. Tap <span style={{color:"#c9a84c"}}>"Add to Home screen"</span><br/>
+                      3. Tap <span style={{color:"#c9a84c"}}>"Install"</span>
+                    </div>
+                  </div>
+                  <div style={{background:"#0f1318",border:"1px solid #1e2630",padding:"16px"}}>
+                    <div style={{color:"#c9a84c",fontSize:"10px",letterSpacing:"3px",marginBottom:"10px"}}>iPHONE — SAFARI</div>
+                    <div style={{color:"#d4dde8",fontSize:"12px",lineHeight:"1.8",letterSpacing:"0.5px"}}>
+                      1. Tap the <span style={{color:"#c9a84c"}}>⎙ Share</span> button (bottom bar)<br/>
+                      2. Scroll down and tap <span style={{color:"#c9a84c"}}>"Add to Home Screen"</span><br/>
+                      3. Tap <span style={{color:"#c9a84c"}}>"Add"</span>
+                    </div>
+                  </div>
+                </>
+            }
+          </div>
+        </>}
+
+      {vehDatePicker&&<VehicleDatePicker
+        value={vehicles[vehDatePicker.idx]?.dateon||""}
+        onConfirm={val=>{const i=vehDatePicker.idx;setVehicles(prev=>{const n=[...prev];n[i]={...n[i],dateon:val};return n;});writeVehicle(i,"dateon",val);setVehDatePicker(null);}}
+        onClose={()=>setVehDatePicker(null)}
+      />}
+      {picker&&<TimePicker time={picker.time} date={picker.date} onConfirm={(t,d)=>{updateRow(picker.idx,"dueBack",t);updateRow(picker.idx,"dueDate",d);setPicker(null);}} onClear={()=>{updateRow(picker.idx,"dueBack","");updateRow(picker.idx,"dueDate","");setPicker(null);}} onClose={()=>setPicker(null)}/>}
+
+        {/* ROOMS TAB */}
+        {tab==="rooms"&&<fieldset disabled={!canRooms}>
+          {!canRooms&&<div style={{marginBottom:"12px",padding:"8px 14px",border:"1px solid #1e2630",background:"#0d1117",color:"#8a9aaa",fontSize:"11px",letterSpacing:"1px"}}>👁 VIEW ONLY — only admins and the BDL Rooms (G4) function can edit this tab.</div>}
+          <div style={{...s.hint,marginBottom:"14px"}}>BDL ROOM NUMBERS — MIRRORS BOARD NAMES</div>
+          <div style={s.tw}>
+            <table style={{width:"100%",borderCollapse:"collapse"}}>
+              <thead><tr>{["#","Name","Room Number"].map(h=><th key={h} style={s.th}>{h}</th>)}</tr></thead>
+              <tbody>
+                {rows.filter(r=>r.name).map((r,i)=>{
+                  const key=r.name.replace(/[^a-zA-Z0-9]/g,"_");
+                  return <tr key={r.name} style={{borderBottom:"1px solid rgba(30,38,48,0.7)"}}>
+                    <td style={{...s.td,color:"#5a6a7a",fontSize:"11px",width:"28px"}}>{String(i+1).padStart(2,"0")}</td>
+                    <td style={{...s.td,minWidth:"160px"}}><span style={{color:"#fff",fontFamily:f.mono,fontSize:"12px",letterSpacing:"1px"}}>{r.name}</span></td>
+                    <td style={{...s.td,minWidth:"140px"}}>
+                      <input style={{...s.inp,textTransform:"none",letterSpacing:"1px"}} value={rooms[key]||""} placeholder="Room no." maxLength={20}
+                        onChange={e=>{const v=e.target.value;setRooms(prev=>({...prev,[key]:v}));writeRoom(r.name,v);}}/>
+                    </td>
+                  </tr>;
+                })}
+              </tbody>
+            </table>
+          </div>
+          {rows.filter(r=>r.name).length===0&&<div style={{color:"#5a6a7a",fontSize:"11px",letterSpacing:"1px",padding:"20px 0"}}>No personnel yet — the admin creates users in the Admin tab.</div>}
+        </fieldset>}
+
+        {/* FP NUMBERS TAB */}
+        {tab==="fp"&&<fieldset disabled={!canFp}>
+          {!canFp&&<div style={{marginBottom:"12px",padding:"8px 14px",border:"1px solid #1e2630",background:"#0d1117",color:"#8a9aaa",fontSize:"11px",letterSpacing:"1px"}}>👁 VIEW ONLY — only admins and the FP Numbers (G6) function can edit this tab.</div>}
+          <div style={{...s.hint,marginBottom:"14px"}}>FP NUMBERS — FORCE PROTECTION PHONE NUMBERS</div>
+          <div style={s.tw}>
+            <table style={{width:"100%",borderCollapse:"collapse"}}>
+              <thead><tr>{["#","Name","FP Number"].map(h=><th key={h} style={s.th}>{h}</th>)}</tr></thead>
+              <tbody>
+                {rows.filter(r=>r.name).map((r,i)=>{
+                  const key=r.name.replace(/[^a-zA-Z0-9]/g,"_");
+                  return <tr key={r.name} style={{borderBottom:"1px solid rgba(30,38,48,0.7)"}}>
+                    <td style={{...s.td,color:"#5a6a7a",fontSize:"11px",width:"28px"}}>{String(i+1).padStart(2,"0")}</td>
+                    <td style={{...s.td,minWidth:"160px"}}><span style={{color:"#fff",fontFamily:f.mono,fontSize:"12px",letterSpacing:"1px"}}>{r.name}</span></td>
+                    <td style={{...s.td,minWidth:"160px"}}>
+                      <input style={{...s.inp,textTransform:"none",letterSpacing:"2px"}} value={fpNums[key]||""} placeholder="FP number" maxLength={20}
+                        onChange={e=>{const v=e.target.value;setFpNums(prev=>({...prev,[key]:v}));writeFP(r.name,v);}}/>
+                    </td>
+                  </tr>;
+                })}
+              </tbody>
+            </table>
+          </div>
+          {rows.filter(r=>r.name).length===0&&<div style={{color:"#5a6a7a",fontSize:"11px",letterSpacing:"1px",padding:"20px 0"}}>No personnel yet — the admin creates users in the Admin tab.</div>}
+        </fieldset>}
+
+        {/* EVAC PAC LIST TAB */}
+        {tab==="evac"&&<fieldset disabled={!canEvac}>{!canEvac&&<div style={{marginBottom:"12px",padding:"8px 14px",border:"1px solid #1e2630",background:"#0d1117",color:"#8a9aaa",fontSize:"11px",letterSpacing:"1px"}}>👁 VIEW ONLY — EVAC editing is limited to admins and the EVAC (Force Protection) function.</div>}<EvacTab evacData={evacData} writeEvac={writeEvac} vehicles={vehicles} rows={rows} f={f} s={s}/></fieldset>}
+
+        {/* AO MAP TAB */}
+        {tab==="map"&&<AOMap f={f} rows={rows} locs2={locs2} ao={ao} myUid={myUid} canEditOthers={canEditOthers} setPersonLocation={setPersonLocation}/>}
+
+      </div>
+
+      {/* Install popup - shows once, dismissed if already installed */}
+      {installable&&!installed&&tab!=="install"&&<InstallBanner onInstall={()=>{if(window.deferredInstallPrompt){window.deferredInstallPrompt.prompt();window.deferredInstallPrompt.userChoice.then(r=>{if(r.outcome==="accepted"){setInstalled(true);setInstallable(false);}});}}} onDismiss={()=>setInstallable(false)} f={f}/>}
+    </div>
+  );
+}
+
+function AOMap({f,rows,locs2,ao,myUid,canEditOthers,setPersonLocation}){
+  const mapRef = React.useRef(null);
+  const mapInstanceRef = React.useRef(null);
+  const districtLayersRef = React.useRef([]);
+  const offLayersRef = React.useRef([]);
+  const nightLayersRef = React.useRef([]);
+  const [selected,setSelected] = React.useState(null);
+  const [status,setStatus] = React.useState("loading");
+  const [districts,setDistricts] = React.useState([]);
+  const [showOff,setShowOff] = React.useState(true);
+  const [showNight,setShowNight] = React.useState(true);
+  const [locPick,setLocPick] = React.useState(null); // {district} — set location popup
+  const [q,setQ] = React.useState("");
+  const [results,setResults] = React.useState([]);
+  const [searching,setSearching] = React.useState(false);
+  const [searchErr,setSearchErr] = React.useState("");
+  const markerRef = React.useRef(null);
+  const fnt = f.mono;
+  const regionList = ((window.MT_GEO&&window.MT_GEO.regions)||{})[ao.country]||[];
+  const myRow = rows.find(r=>r.uid===myUid);
+
+  const pickPlace = (name,lat,lng,zoom)=>{
+    const map = mapInstanceRef.current;
+    if(map&&!isNaN(lat)&&!isNaN(lng)){
+      map.setView([lat,lng],zoom||10);
+      if(markerRef.current) markerRef.current.remove();
+      markerRef.current = L.circleMarker([lat,lng],{radius:9,color:"#c9a84c",weight:3,fillColor:"#c9a84c",fillOpacity:0.35}).addTo(map);
+    }
+    setLocPick({district:name});
+  };
+  const search = async ()=>{
+    const term=q.trim(); if(term.length<2) return;
+    setSearching(true); setSearchErr(""); setResults([]);
+    try{
+      const cc = ao.country ? "&countrycodes="+encodeURIComponent(ao.country.toLowerCase()) : "";
+      const res = await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6"+cc+"&q="+encodeURIComponent(term));
+      if(!res.ok) throw new Error("search service busy");
+      const data = await res.json();
+      if(!data.length) setSearchErr("NOTHING FOUND");
+      setResults(data.map(d=>({...d,short:String(d.name||d.display_name.split(",")[0]).toUpperCase().slice(0,40)})));
+    }catch(e){ setSearchErr("SEARCH FAILED — TRY AGAIN IN A MOMENT"); }
+    setSearching(false);
+  };
+  // re-centre when the admin changes the AO
+  React.useEffect(()=>{
+    if(mapInstanceRef.current&&ao.lat!=null) mapInstanceRef.current.setView([ao.lat,ao.lng],ao.zoom||6);
+  },[ao.country,ao.lat,ao.lng,ao.zoom]);
+
+  const DEF_STYLE   = {color:"#2ecc71",weight:1.5,fillColor:"#2ecc71",fillOpacity:0.08,opacity:0.7};
+  const SEL_STYLE   = {color:"#c9a84c",weight:3,fillColor:"#c9a84c",fillOpacity:0.4,opacity:1};
+  const HOV_STYLE   = {color:"#2ecc71",weight:2.5,fillColor:"#2ecc71",fillOpacity:0.25,opacity:1};
+  const OFF_STYLE   = {color:"#e74c3c",weight:2,fillColor:"#e74c3c",fillOpacity:0.4,opacity:1};
+  const NIGHT_STYLE = {color:"#f39c12",weight:2,fillColor:"#f39c12",fillOpacity:0.35,opacity:1};
+
+  const resetDistricts = ()=>districtLayersRef.current.forEach(({layer})=>layer.setStyle(DEF_STYLE));
+
+  const selectDistrict = (name,layer,map)=>{
+    resetDistricts();
+    layer.setStyle(SEL_STYLE);
+    layer.bringToFront();
+    setSelected(name);
+    setLocPick({district:name});
+    if(map){ try{ map.fitBounds(layer.getBounds(),{padding:[40,40],maxZoom:14}); }catch(e){} }
+  };
+
+  React.useEffect(()=>{
+    if(!mapRef.current||mapInstanceRef.current) return;
+    const map = L.map(mapRef.current,{
+      center:[ao.lat||20,ao.lng||0],zoom:ao.zoom||(ao.lat?6:2),
+      zoomControl:true,tap:true,touchZoom:true,dragging:true,
+    });
+    mapInstanceRef.current = map;
+
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
+      maxZoom:19,subdomains:'abcd',attribution:'© OSM © CARTO'
+    }).addTo(map);
+
+    // Detect layer type by styleUrl — the only reliable field omnivore passes through
+    const getLayerType = (feature)=>{
+      const s = (feature.properties&&feature.properties.styleUrl)||"";
+      if(s.includes("DB4436")) return "offlimits";
+      if(s.includes("F4EB37")||s.includes("FFFF00")) return "night";
+      if(s.includes("00FFFF")||s.includes("93D7E8")) return "district";
+      return "other";
+    };
+
+    omnivore.kml('./map.kml', null, L.geoJson(null,{
+      pointToLayer: ()=>null,
+      filter: feature=>{
+        const t = feature.geometry&&feature.geometry.type||"";
+        return t==="Polygon"||t==="MultiPolygon";
+      },
+      style: feature=>{
+        const type = getLayerType(feature);
+        if(type==="offlimits") return OFF_STYLE;
+        if(type==="night") return NIGHT_STYLE;
+        return DEF_STYLE;
+      },
+      onEachFeature:(feature,layer)=>{
+        const type = getLayerType(feature);
+        const name = (feature.properties&&(feature.properties.name||feature.properties.Name))||"";
+        if(!name) return;
+
+        if(type==="offlimits"){
+          layer.setStyle(OFF_STYLE);
+          layer.bindTooltip('<div style="font-family:Share Tech Mono,monospace;color:#fff;background:#e74c3c;padding:4px 8px;font-size:11px;font-weight:bold;border-radius:2px">🔴 OFF LIMITS<br>'+name+'</div>',{sticky:true,opacity:1});
+          offLayersRef.current.push(layer);
+          return;
+        }
+        if(type==="night"){
+          layer.setStyle(NIGHT_STYLE);
+          layer.bindTooltip('<div style="font-family:Share Tech Mono,monospace;color:#000;background:#f39c12;padding:4px 8px;font-size:11px;font-weight:bold;border-radius:2px">🟡 NIGHT RESTRICTION<br>'+name+'<br>1900–0500</div>',{sticky:true,opacity:1});
+          nightLayersRef.current.push(layer);
+          return;
+        }
+        if(type==="district"){
+          layer.setStyle(DEF_STYLE);
+          layer.on('mouseover',()=>{ if(selected!==name) layer.setStyle(HOV_STYLE); });
+          layer.on('mouseout',()=>{ if(selected!==name) layer.setStyle(DEF_STYLE); });
+          layer.on('click',()=>selectDistrict(name,layer,map));
+          districtLayersRef.current.push({name,layer});
+
+          // Label
+          try{
+            const c=layer.getBounds().getCenter();
+            const icon=L.divIcon({
+              className:'',
+              html:'<div style="color:#ccc;font-family:Share Tech Mono,monospace;font-size:8px;text-shadow:0 0 3px #000,0 0 3px #000;white-space:nowrap;pointer-events:none;transform:translateX(-50%);letter-spacing:.5px">'+name+'</div>',
+              iconSize:[0,0],iconAnchor:[0,0],
+            });
+            L.marker(c,{icon,interactive:false}).addTo(map);
+          }catch(e){}
+        }
+      }
+    }))
+    .on('ready',function(){
+      // Off-limits on top
+      offLayersRef.current.forEach(l=>l.addTo(map));
+      nightLayersRef.current.forEach(l=>l.addTo(map));
+      const names=[...new Set(districtLayersRef.current.map(l=>l.name))].sort();
+      setDistricts(names);
+      setStatus("ready");
+      try{ map.fitBounds(this.getBounds(),{padding:[10,10]}); }catch(e){}
+    })
+    .on('error',()=>setStatus("error"))
+    .addTo(map);
+
+    return()=>{ if(mapInstanceRef.current){mapInstanceRef.current.remove();mapInstanceRef.current=null;districtLayersRef.current=[];offLayersRef.current=[];nightLayersRef.current=[];} };
+  },[]);
+
+  // Toggle off-limits
+  React.useEffect(()=>{
+    if(!mapInstanceRef.current) return;
+    offLayersRef.current.forEach(l=>{ try{ showOff?l.addTo(mapInstanceRef.current):l.remove(); }catch(e){} });
+  },[showOff]);
+
+  // Toggle night
+  React.useEffect(()=>{
+    if(!mapInstanceRef.current) return;
+    nightLayersRef.current.forEach(l=>{ try{ showNight?l.addTo(mapInstanceRef.current):l.remove(); }catch(e){} });
+  },[showNight]);
+
+  const toggleBtn = (active,onClick,color,label)=>(
+    <button onClick={onClick} style={{background:active?color+"22":"#0f1318",border:"1px solid "+(active?color:"#1e2630"),color:active?color:"#5a6a7a",fontFamily:fnt,fontSize:"10px",letterSpacing:"1px",padding:"6px 12px",cursor:"pointer"}}>
+      {label}
+    </button>
+  );
+
+
+  return (
+    <div>
+      <div style={{marginBottom:"10px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:"8px"}}>
+        <div style={{fontSize:"11px",color:"#5a6a7a",letterSpacing:"1px",fontFamily:fnt}}>AO MAP — {ao.name?ao.name.toUpperCase():"TBC LOCATION"}</div>
+        {status==="loading"&&<div style={{color:"#c9a84c",fontFamily:fnt,fontSize:"10px",letterSpacing:"1px"}}>⟳ LOADING...</div>}
+        {status==="ready"&&<div style={{color:districts.length?"#2ecc71":"#5a6a7a",fontFamily:fnt,fontSize:"10px",letterSpacing:"1px"}}>{districts.length?"✓ "+districts.length+" KML DISTRICTS LOADED":"NO KML OVERLAY (OPTIONAL — EDIT map.kml)"}</div>}
+        {status==="error"&&<div style={{color:"#5a6a7a",fontFamily:fnt,fontSize:"10px",letterSpacing:"1px"}}>NO KML OVERLAY (OPTIONAL — EDIT map.kml)</div>}
+      </div>
+
+      {/* Layer toggles */}
+      <div style={{display:"flex",gap:"8px",marginBottom:"10px",flexWrap:"wrap"}}>
+        <span style={{fontSize:"9px",color:"#5a6a7a",letterSpacing:"2px",fontFamily:fnt,alignSelf:"center"}}>LAYERS:</span>
+        {toggleBtn(true,()=>{},"#2ecc71","🟢 DISTRICTS")}
+        {toggleBtn(showOff,()=>setShowOff(v=>!v),"#e74c3c","🔴 OFF LIMITS")}
+        {toggleBtn(showNight,()=>setShowNight(v=>!v),"#f39c12","🟡 NIGHT RESTRICTION")}
+      </div>
+
+      {/* Legend */}
+      <div style={{display:"flex",gap:"16px",marginBottom:"10px",flexWrap:"wrap"}}>
+        {[["#2ecc71","District boundaries (tap to select)"],["#e74c3c","Off-limits — avoid"],["#f39c12","Night restriction 1900–0500"]].map(([c,l])=>(
+          <div key={l} style={{display:"flex",alignItems:"center",gap:"6px"}}>
+            <div style={{width:"12px",height:"12px",background:c+"44",border:"2px solid "+c,flexShrink:0}}/>
+            <span style={{fontSize:"10px",color:"#8a9aaa",fontFamily:fnt,letterSpacing:"1px"}}>{l}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Region chips + place search (free: built-in region list + OpenStreetMap search) */}
+      {regionList.length>0&&(
+        <div style={{marginBottom:"10px"}}>
+          <div style={{fontSize:"10px",color:"#c9a84c",letterSpacing:"3px",marginBottom:"6px",fontFamily:fnt}}>REGIONS — TAP TO ZOOM IN & SET LOCATION</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:"6px",maxHeight:"130px",overflowY:"auto"}}>
+            {regionList.map(rg=>(
+              <button key={rg[0]} onClick={()=>pickPlace(rg[0].toUpperCase().slice(0,40),rg[1],rg[2],9)}
+                style={{background:locPick&&locPick.district===rg[0].toUpperCase().slice(0,40)?"rgba(201,168,76,0.2)":"#0f1318",border:"1px solid #2ecc7133",color:"#d4dde8",fontFamily:fnt,fontSize:"11px",letterSpacing:"1px",padding:"5px 10px",cursor:"pointer"}}>{rg[0]}</button>
+            ))}
+          </div>
+        </div>
+      )}
+      <div style={{display:"flex",gap:"8px",marginBottom:"10px",flexWrap:"wrap"}}>
+        <input value={q} onChange={e=>setQ(e.target.value)} onKeyDown={e=>e.key==="Enter"&&search()} placeholder={"SEARCH A PLACE"+(ao.name?" IN "+ao.name.toUpperCase():"")+"..."} maxLength={60}
+          style={{flex:"1 1 220px",background:"#0f1318",border:"1px solid #1e2630",color:"#fff",fontFamily:fnt,fontSize:"12px",padding:"8px 12px",outline:"none",letterSpacing:"1px"}}/>
+        <button onClick={search} style={{background:"rgba(201,168,76,0.1)",border:"1px solid #c9a84c",color:"#c9a84c",fontFamily:fnt,fontSize:"11px",letterSpacing:"2px",padding:"8px 14px",cursor:"pointer"}}>{searching?"...":"SEARCH"}</button>
+      </div>
+      {searchErr&&<div style={{color:"#e74c3c",fontFamily:fnt,fontSize:"10px",letterSpacing:"1px",marginBottom:"8px"}}>⚠ {searchErr}</div>}
+      {results.length>0&&<div style={{marginBottom:"10px",display:"flex",flexDirection:"column",gap:"4px"}}>
+        {results.map((r,i)=>(
+          <button key={i} onClick={()=>{pickPlace(r.short,parseFloat(r.lat),parseFloat(r.lon),11);setResults([]);}}
+            style={{textAlign:"left",background:"#0f1318",border:"1px solid #1e2630",color:"#d4dde8",fontFamily:fnt,fontSize:"11px",letterSpacing:"0.5px",padding:"6px 10px",cursor:"pointer"}}>{r.display_name}</button>
+        ))}
+      </div>}
+
+      {/* Selected place -> set location popup */}
+      {locPick&&(
+        <div style={{background:"rgba(201,168,76,0.08)",border:"1px solid #c9a84c",padding:"12px 16px",marginBottom:"10px"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"10px"}}>
+            <div style={{color:"#c9a84c",fontFamily:"'Barlow Condensed',sans-serif",fontWeight:"900",fontSize:"20px",letterSpacing:"3px"}}>{locPick.district}</div>
+            <button onClick={()=>{resetDistricts();setSelected(null);setLocPick(null);}} style={{background:"transparent",border:"none",color:"#5a6a7a",cursor:"pointer",fontSize:"18px"}}>✕</button>
+          </div>
+          <div style={{fontSize:"10px",color:"#5a6a7a",letterSpacing:"2px",marginBottom:"8px",fontFamily:fnt}}>SET AS LOCATION FOR:</div>
+          <div style={{display:"flex",gap:"8px",flexWrap:"wrap"}}>
+            {myRow&&<button onClick={()=>{setPersonLocation(myUid,locPick.district);setLocPick(null);}}
+              style={{background:"rgba(46,204,113,0.12)",border:"1px solid #2ecc71",color:"#2ecc71",fontFamily:fnt,fontSize:"11px",letterSpacing:"2px",padding:"7px 14px",cursor:"pointer"}}>ME — {myRow.name}</button>}
+            {canEditOthers&&<select defaultValue=""
+              onChange={e=>{ if(!e.target.value) return; setPersonLocation(e.target.value,locPick.district); e.target.value=""; }}
+              style={{appearance:"none",WebkitAppearance:"none",background:"#080a0d",border:"1px solid #c9a84c55",color:"#fff",fontFamily:fnt,fontSize:"11px",padding:"7px 12px",cursor:"pointer",outline:"none",minWidth:"160px",borderRadius:"0"}}>
+              <option value="">— SOMEONE ELSE —</option>
+              {rows.map(r=><option key={r.uid} value={r.uid}>{r.rank} {r.name}</option>)}
+            </select>}
+            {!myRow&&!canEditOthers&&<div style={{fontSize:"10px",color:"#5a6a7a",fontFamily:fnt,letterSpacing:"1px"}}>You are not on the board, so there is no line to update.</div>}
+          </div>
+          <div style={{fontSize:"10px",color:"#5a6a7a",fontFamily:fnt,letterSpacing:"1px",marginTop:"8px"}}>→ updates the Location column on the board</div>
+        </div>
+      )}
+
+      <div ref={mapRef} style={{height:"500px",border:"1px solid #1e2630",width:"100%",touchAction:"manipulation"}}/>
+
+      {districts.length>0&&(
+        <div style={{marginTop:"12px"}}>
+          <div style={{fontSize:"10px",color:"#c9a84c",letterSpacing:"3px",marginBottom:"8px",fontFamily:fnt}}>DISTRICTS — TAP TO SELECT & SET LOCATION</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:"6px"}}>
+            {districts.map(name=>{
+              const isSel=selected===name;
+              return(
+                <button key={name}
+                  onClick={()=>{
+                    const found=districtLayersRef.current.find(l=>l.name===name);
+                    if(found&&mapInstanceRef.current) selectDistrict(name,found.layer,mapInstanceRef.current);
+                  }}
+                  style={{background:isSel?"rgba(201,168,76,0.2)":"#0f1318",border:"1px solid "+(isSel?"#c9a84c":"#2ecc7133"),color:isSel?"#c9a84c":"#d4dde8",fontFamily:fnt,fontSize:"11px",letterSpacing:"1px",padding:"5px 10px",cursor:"pointer"}}>
+                  {name}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EvacCard({vi,evacData,writeEvac,vehList,nameList,f}){
+  const vd = evacData["v"+vi]||{};
+  const [paxCount,setPaxCount] = React.useState(parseInt(vd.paxCount)||0);
+
+  const selV = (val)=>({appearance:"none",WebkitAppearance:"none",background:"#080a0d",border:"1px solid "+(val?"#c9a84c55":"#1e2630"),color:val?"#c9a84c":"#5a6a7a",fontFamily:f.mono,fontSize:"11px",padding:"5px 7px",cursor:"pointer",outline:"none",width:"100%",minWidth:"140px",borderRadius:"0"});
+  const selN = (val)=>({appearance:"none",WebkitAppearance:"none",background:"#080a0d",border:"1px solid "+(val?"#2ecc7155":"#1e2630"),color:val?"#2ecc71":"#5a6a7a",fontFamily:f.mono,fontSize:"11px",padding:"5px 7px",cursor:"pointer",outline:"none",width:"100%",minWidth:"140px",borderRadius:"0"});
+  const selP = (val)=>({appearance:"none",WebkitAppearance:"none",background:"#080a0d",border:"1px solid "+(val?"#3498db55":"#1e2630"),color:val?"#3498db":"#5a6a7a",fontFamily:f.mono,fontSize:"11px",padding:"5px 7px",cursor:"pointer",outline:"none",width:"80px",borderRadius:"0"});
+  const lbl = {fontSize:"9px",color:"#5a6a7a",letterSpacing:"2px",minWidth:"65px",flexShrink:0,fontFamily:f.mono};
+  const row = {display:"flex",gap:"8px",marginBottom:"10px",alignItems:"center",flexWrap:"wrap"};
+
+  const handlePaxCount = (e)=>{
+    const n=parseInt(e.target.value)||0;
+    setPaxCount(n);
+    writeEvac(vi,"paxCount",String(n));
+    // Clear pax slots beyond new count
+    for(let i=n+1;i<=6;i++) writeEvac(vi,"pax"+i,"");
+  };
+
+  const totalOnBoard = 1 + paxCount; // driver + pax
+
+  return (
+    <div style={{background:"#0f1318",border:"1px solid #1e2630",padding:"14px 16px",marginBottom:"12px"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid #1e2630",paddingBottom:"10px",marginBottom:"12px",flexWrap:"wrap",gap:"8px"}}>
+        <span style={{fontFamily:f.sans,fontWeight:"900",fontSize:"22px",color:"#c9a84c",letterSpacing:"3px"}}>VEH {String(vi+1).padStart(2,"0")}</span>
+        {vd.vehicle&&<span style={{fontFamily:f.mono,fontSize:"11px",color:"#5a6a7a",letterSpacing:"1px"}}>{vd.vehicle}</span>}
+        {totalOnBoard>1&&<span style={{background:"rgba(52,152,219,0.15)",border:"1px solid rgba(52,152,219,0.4)",color:"#3498db",fontFamily:f.mono,fontSize:"10px",padding:"3px 8px",letterSpacing:"1px"}}>{totalOnBoard} ON BOARD</span>}
+      </div>
+
+      <div style={row}>
+        <span style={lbl}>VEHICLE</span>
+        <select value={vd.vehicle||""} onChange={e=>writeEvac(vi,"vehicle",e.target.value)} style={selV(vd.vehicle)}>
+          <option value="">— SELECT VEHICLE —</option>
+          {vehList.map(v=><option key={v} value={v}>{v}</option>)}
+        </select>
+      </div>
+
+      <div style={row}>
+        <span style={lbl}>DRIVER</span>
+        <select value={vd.driver||""} onChange={e=>writeEvac(vi,"driver",e.target.value)} style={selN(vd.driver)}>
+          <option value="">— SELECT DRIVER —</option>
+          {nameList.map(n=><option key={n} value={n}>{n}</option>)}
+        </select>
+      </div>
+
+      <div style={row}>
+        <span style={lbl}>PAX COUNT</span>
+        <select value={String(paxCount)} onChange={handlePaxCount} style={selP(paxCount>0)}>
+          <option value="0">0</option>
+          {[1,2,3,4,5,6].map(n=><option key={n} value={String(n)}>{n}</option>)}
+        </select>
+        <span style={{fontSize:"10px",color:"#5a6a7a",fontFamily:f.mono,letterSpacing:"1px"}}>PAX SEATS</span>
+      </div>
+
+      {paxCount>0&&<>
+        <div style={{fontSize:"9px",color:"#5a6a7a",letterSpacing:"2px",marginBottom:"8px",fontFamily:f.mono}}>PAX ({paxCount})</div>
+        <div style={{display:"flex",gap:"8px",flexWrap:"wrap"}}>
+          {Array.from({length:paxCount},(_,si)=>(
+            <select key={si+1} value={vd["pax"+(si+1)]||""} onChange={e=>writeEvac(vi,"pax"+(si+1),e.target.value)} style={{...selN(vd["pax"+(si+1)]),minWidth:"130px",flex:"1"}}>
+              <option value="">— PAX {si+1} —</option>
+              {nameList.map(n=><option key={n} value={n}>{n}</option>)}
+            </select>
+          ))}
+        </div>
+      </>}
+    </div>
+  );
+}
+
+function EvacTab({evacData,writeEvac,vehicles,rows,f,s}){
+  const vehList=vehicles.filter(v=>v.vrn).map(v=>v.vrn+(v.make?" "+v.make:"")+(v.model?" "+v.model:""));
+  const nameList=rows.filter(r=>r.name).map(r=>r.name);
+  const totalOnBoard=Array.from({length:10},(_,vi)=>{
+    const vd=evacData["v"+vi]||{};
+    return 1+(parseInt(vd.paxCount)||0);
+  }).filter((_,vi)=>(evacData["v"+vi]||{}).vehicle).reduce((a,b)=>a+b,0);
+  return <>
+    <div style={{...s.hint,marginBottom:"6px"}}>EVAC VEHICLE PAC LIST — 10 VEHICLES</div>
+    {totalOnBoard>0&&<div style={{background:"rgba(52,152,219,0.08)",border:"1px solid rgba(52,152,219,0.3)",padding:"8px 14px",marginBottom:"14px",fontSize:"11px",color:"#3498db",fontFamily:f.mono,letterSpacing:"1px"}}>
+      TOTAL ON BOARD: {totalOnBoard} PERSONNEL ACROSS {Array.from({length:10}).filter((_,vi)=>(evacData["v"+vi]||{}).vehicle).length} VEHICLES
+    </div>}
+    {Array.from({length:10},(_,vi)=>(
+      <EvacCard key={vi} vi={vi} evacData={evacData} writeEvac={writeEvac} vehList={vehList} nameList={nameList} f={f}/>
+    ))}
+  </>;
+}
+
+function InstallBanner({onInstall,onDismiss,f}){
+  return (
+    <div style={{position:"fixed",bottom:0,left:0,right:0,background:"#0d1117",borderTop:"2px solid #c9a84c",padding:"12px 20px",display:"flex",alignItems:"center",gap:"12px",zIndex:999,flexWrap:"wrap"}}>
+      <div style={{flex:1,minWidth:"160px"}}>
+        <div style={{color:"#c9a84c",fontSize:"11px",letterSpacing:"2px",marginBottom:"2px",fontFamily:f.mono}}>📲 INSTALL AS APP</div>
+        <div style={{color:"#5a6a7a",fontSize:"10px",letterSpacing:"1px",fontFamily:f.mono}}>Add to home screen for quick access</div>
+      </div>
+      <button onClick={onInstall} style={{background:"rgba(201,168,76,0.15)",border:"1px solid #c9a84c",color:"#c9a84c",fontFamily:f.mono,fontSize:"11px",letterSpacing:"2px",padding:"8px 16px",cursor:"pointer",whiteSpace:"nowrap"}}>INSTALL</button>
+      <button onClick={onDismiss} style={{background:"transparent",border:"none",color:"#5a6a7a",fontFamily:f.mono,fontSize:"16px",cursor:"pointer",padding:"4px 8px"}}>✕</button>
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(Root));
+</script>
+
+
+</body>
+</html>
