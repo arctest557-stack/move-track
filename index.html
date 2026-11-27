@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Moving & Tracking</title>
+<title>Move & Track</title>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@700;900&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
@@ -362,7 +362,7 @@ function LoginScreen({notice,onLogin}){
   return (
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:"20px",background:"#080a0d"}}>
       <form onSubmit={submit} style={{width:"100%",maxWidth:"360px",background:A.panel,border:"1px solid "+A.line,borderTop:"3px solid "+A.gold,padding:"28px 24px"}}>
-        <div style={{fontFamily:A.sans,fontWeight:900,fontSize:"30px",letterSpacing:"4px",color:"#fff",textAlign:"center"}}>MOVING <span style={{color:A.gold}}>&</span> TRACKING</div>
+        <div style={{fontFamily:A.sans,fontWeight:900,fontSize:"30px",letterSpacing:"4px",color:"#fff",textAlign:"center"}}>MOVE <span style={{color:A.gold}}>&</span> TRACK</div>
         <div style={{fontFamily:A.mono,fontSize:"10px",letterSpacing:"3px",color:A.dim,textAlign:"center",marginTop:"6px"}}>AUTHORISED USERS ONLY</div>
         {notice&&<div style={{marginTop:"16px",padding:"8px 10px",border:"1px solid "+A.orange+"88",background:A.orange+"11",color:A.orange,fontFamily:A.mono,fontSize:"11px",letterSpacing:"1px"}}>{notice}</div>}
         <div style={labSt}>USERNAME</div>
@@ -639,6 +639,12 @@ function UserCard({uid,u,pres,online,self,me,activeAdmins,onIssued}){
     db.ref("users/"+uid+"/disabled").set(!u.disabled);
     auditNow("ADMIN","USER "+u.username,"disabled",String(!!u.disabled),String(!u.disabled));
   };
+  const removeUser = () => {
+    if(!u.disabled||self) return;
+    if(!window.confirm("PERMANENTLY REMOVE "+u.username+" ("+(u.name||"")+")?\n\nTheir login record and Board line are deleted and they can never log in again. The log history is kept. The username cannot be used again.\n\nThis cannot be undone.")) return;
+    const ups={}; ups["users/"+uid]=null; ups["roster/"+uid]=null; ups["board/"+uid]=null;
+    db.ref().update(ups).then(()=>auditNow("ADMIN","USER "+u.username,"removed","existing","removed")).catch(()=>window.alert("Could not remove the user. Try again."));
+  };
   const toggleRole = () => {
     const to = u.role==="admin"?"user":"admin";
     if(to==="user" && activeAdmins<=1) return window.alert("You cannot demote the only admin. Create a second admin first.");
@@ -705,6 +711,7 @@ function UserCard({uid,u,pres,online,self,me,activeAdmins,onIssued}){
       <div style={{marginTop:"12px"}}>
         {dirty&&<button style={smallBtn(A.green)} onClick={save}>SAVE CHANGES</button>}
         {!self&&<button style={smallBtn(u.disabled?A.green:A.red)} onClick={toggleDisabled}>{u.disabled?"ENABLE":"DISABLE"}</button>}
+        {!self&&u.disabled&&<button style={smallBtn(A.red)} onClick={removeUser}>REMOVE PERMANENTLY</button>}
         {!self&&<button style={smallBtn(A.gold)} onClick={toggleRole}>{u.role==="admin"?"MAKE USER":"MAKE ADMIN"}</button>}
         {!u.disabled&&!reset&&<button style={smallBtn(A.orange)} onClick={openReset}>RESET LOGIN (FORGOTTEN PASSWORD)</button>}
       </div>
@@ -1284,7 +1291,7 @@ function App({user,profile,onLogout,onAccount}){
   if(!connected) return (
     <div style={s.wrap}>
       <div style={s.header}>
-        <div><div style={s.title}>MOVING <span style={s.gold}>&</span> TRACKING</div><div style={s.sub}>Bed Down Location (BDL) Status Board // Live Personnel Tracking</div></div>
+        <div><div style={s.title}>MOVE <span style={s.gold}>&</span> TRACK</div><div style={s.sub}>Bed Down Location (BDL) Status Board // Live Personnel Tracking</div></div>
         <div style={s.cw}><div style={s.bhrC}>{bhr}</div><div style={s.bhrL}>{ao.name?ao.name.toUpperCase()+" LOCAL":"TBC LOCATION"}</div><div style={s.zulC}>ZULU: {zulu}</div></div>
       </div>
       <div style={s.conn}><div style={{width:"30px",height:"30px",border:"2px solid #1e2630",borderTopColor:"#c9a84c",borderRadius:"50%",animation:"spin .8s linear infinite",margin:"0 auto 16px"}}/>CONNECTING TO DATABASE...{dbErr&&<div style={{color:"#e74c3c",marginTop:"14px",fontSize:"11px",letterSpacing:"1px"}}>⚠ {dbErr}</div>}<div style={{marginTop:"16px"}}><button onClick={onLogout} style={{background:"transparent",border:"1px solid #1e2630",color:"#8a9aaa",fontFamily:f.mono,fontSize:"10px",letterSpacing:"2px",padding:"6px 12px",cursor:"pointer"}}>LOG OUT</button></div></div>
@@ -1294,7 +1301,7 @@ function App({user,profile,onLogout,onAccount}){
   return (
     <div style={s.wrap}>
       <div style={s.header}>
-        <div><div style={s.title}>MOVING <span style={s.gold}>&</span> TRACKING</div><div style={s.sub}>Bed Down Location (BDL) Status Board // Live Personnel Tracking</div></div>
+        <div><div style={s.title}>MOVE <span style={s.gold}>&</span> TRACK</div><div style={s.sub}>Bed Down Location (BDL) Status Board // Live Personnel Tracking</div></div>
         <div style={s.cw}>
           <div style={s.bhrC}>{bhr}</div><div style={s.bhrL}>{ao.name?ao.name.toUpperCase()+" LOCAL":"TBC LOCATION"}</div><div style={s.zulC}>ZULU: {zulu}</div>
           <div style={s.fill}>{filled} ON BOARD{odCount>0&&<span style={{color:"#e74c3c",marginLeft:"8px"}}>⚠ {odCount} OVERDUE</span>}</div>
@@ -1506,11 +1513,11 @@ function App({user,profile,onLogout,onAccount}){
             {installed
               ? <div style={{background:"rgba(46,204,113,0.08)",border:"1px solid rgba(46,204,113,0.3)",padding:"14px 16px",marginBottom:"16px"}}>
                   <div style={{color:"#2ecc71",fontSize:"12px",letterSpacing:"2px",marginBottom:"6px"}}>✓ APP INSTALLED</div>
-                  <div style={{color:"#5a6a7a",fontSize:"11px",letterSpacing:"1px"}}>Moving & Tracking is installed on this device. Open it from your home screen.</div>
+                  <div style={{color:"#5a6a7a",fontSize:"11px",letterSpacing:"1px"}}>Move & Track is installed on this device. Open it from your home screen.</div>
                 </div>
               : <>
                   {installable&&<>
-                    <div style={{color:"#5a6a7a",fontSize:"11px",letterSpacing:"1px",marginBottom:"14px",lineHeight:"1.7"}}>Tap the button below to install Moving & Tracking as an app on this device.</div>
+                    <div style={{color:"#5a6a7a",fontSize:"11px",letterSpacing:"1px",marginBottom:"14px",lineHeight:"1.7"}}>Tap the button below to install Move & Track as an app on this device.</div>
                     <button
                       onClick={()=>{if(window.deferredInstallPrompt){window.deferredInstallPrompt.prompt();window.deferredInstallPrompt.userChoice.then(r=>{if(r.outcome==="accepted"){setInstalled(true);setInstallable(false);}});}}}
                       style={{background:"rgba(201,168,76,0.15)",border:"1px solid #c9a84c",color:"#c9a84c",fontFamily:f.mono,fontSize:"13px",letterSpacing:"2px",padding:"12px 24px",cursor:"pointer",width:"100%",marginBottom:"20px"}}
