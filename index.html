@@ -301,6 +301,7 @@ const downloadText = (name,text,mime) => {
   a.href = URL.createObjectURL(b); a.download = name; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(a.href),1500);
 };
+const saveErr = e => (e&&/permission/i.test((e.code||"")+(e.message||"")))?"PERMISSION DENIED — PUBLISH THE LATEST database.rules.json IN FIREBASE (RULES TAB), THEN TRY AGAIN":"COULD NOT SAVE — "+((e&&(e.message||e.code))||"CHECK YOUR CONNECTION");
 const keyOf = n => String(n).replace(/[^a-zA-Z0-9]/g,"_").slice(0,48);
 const rankObj = code => RANKS.find(r=>r.code===code) || RANKS[RANKS.length-1];
 const RANK_GROUPS = ["Army","Royal Navy","RAF","Other"];
@@ -1689,7 +1690,7 @@ function AOMap({f,rows,locs2,ao,myUid,canEditOthers,setPersonLocation,isAdmin,re
     const key = keyFor(selected), old = curType;
     const p = type==="none" ? db.ref("restrictions/"+key).remove() : db.ref("restrictions/"+key).set({type:type,name:selected.slice(0,60),level:level});
     p.then(()=>{ auditNow("MAP",selected,"restriction",old,type); setAdminMsg({ok:true,t:selected.toUpperCase()+" → "+(type==="none"?"NO RESTRICTION":(type==="off"?"OFF LIMITS":"NIGHT RESTRICTED"))}); })
-     .catch(()=>setAdminMsg({ok:false,t:"COULD NOT SAVE"}));
+     .catch(e=>setAdminMsg({ok:false,t:saveErr(e)}));
   };
   const saveCircle = () => {
     setAdminMsg(null);
@@ -1700,7 +1701,7 @@ function AOMap({f,rows,locs2,ao,myUid,canEditOthers,setPersonLocation,isAdmin,re
     const key = keyOf("c_"+nm).slice(0,30)+"_"+Date.now();
     db.ref("restrictions/"+key).set({type:draft.type,name:nm,level:"circle",lat:+draft.lat.toFixed(5),lng:+draft.lng.toFixed(5),radiusKm:rad})
       .then(()=>{ auditNow("MAP",nm,"restriction (circle)","none",draft.type+" r="+rad+"km"); setAdminMsg({ok:true,t:"AREA SAVED"}); setDraft({name:"",type:"off",radius:"2",lat:null,lng:null}); setPlacing(false); })
-      .catch(()=>setAdminMsg({ok:false,t:"COULD NOT SAVE"}));
+      .catch(e=>setAdminMsg({ok:false,t:saveErr(e)}));
   };
   const removeRestriction = (key,r) => {
     if(!window.confirm("Remove "+r.name+" ("+(r.type==="off"?"off limits":"night restricted")+")?")) return;
@@ -1714,7 +1715,7 @@ function AOMap({f,rows,locs2,ao,myUid,canEditOthers,setPersonLocation,isAdmin,re
     const pts={}; pDraft.pts.forEach((q,i)=>{ pts[i]={lat:q[0],lng:q[1]}; });
     db.ref("restrictions/"+keyOf("p_"+nm).slice(0,30)+"_"+Date.now()).set({type:pDraft.type,name:nm,level:"poly",pts:pts})
       .then(()=>{ auditNow("MAP",nm,"restriction (shape)","none",pDraft.type+" "+pDraft.pts.length+" points"); setAdminMsg({ok:true,t:"AREA SAVED"}); setPDraft({name:"",type:pDraft.type,pts:[]}); setPlacingP(false); })
-      .catch(()=>setAdminMsg({ok:false,t:"COULD NOT SAVE"}));
+      .catch(e=>setAdminMsg({ok:false,t:saveErr(e)}));
   };
   const saveMarker = () => {
     setAdminMsg(null);
@@ -1725,7 +1726,7 @@ function AOMap({f,rows,locs2,ao,myUid,canEditOthers,setPersonLocation,isAdmin,re
     const note=mDraft.note.trim().slice(0,80); if(note) o.note=note;
     db.ref("markers/"+keyOf(nm+"_"+Date.now())).set(o)
       .then(()=>{ auditNow("MAP",nm,"marker","none","placed"); setAdminMsg({ok:true,t:"MARKER SAVED"}); setMDraft({name:"",note:"",color:mDraft.color,lat:null,lng:null}); setPlacingM(false); })
-      .catch(()=>setAdminMsg({ok:false,t:"COULD NOT SAVE"}));
+      .catch(e=>setAdminMsg({ok:false,t:saveErr(e)}));
   };
   const removeMarker = (k,m) => { if(!window.confirm("Remove marker "+m.name+"?")) return; db.ref("markers/"+k).remove().then(()=>auditNow("MAP",m.name,"marker","placed","removed")); };
   const saveNight = () => {
