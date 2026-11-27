@@ -824,6 +824,39 @@ function LogManager({users}){
 }
 
 // ───────── ADMIN TAB ─────────
+const BACKUP_NODES = ["users","roster","board","locations","statuses","locations2","settings","vehicles","fuelcards","rooms","fpnumbers","evac","restrictions","markers"];
+function BackupPanel(){
+  const [last,setLast] = useState(undefined);
+  const [busy,setBusy] = useState(false);
+  const [msg,setMsg] = useState(null);
+  useEffect(()=>{ const r=db.ref("settings/lastBackup"), c=s=>setLast(s.val()||0); r.on("value",c,()=>setLast(0)); return ()=>r.off("value",c); },[]);
+  const days = last ? Math.floor((Date.now()-last)/86400000) : null;
+  const stale = last!==undefined && (!last || days>=7);
+  const run = async () => {
+    setBusy(true); setMsg(null);
+    try{
+      const out={_backup:{app:"Move-Track",made:new Date().toISOString(),by:"admin"}};
+      for(const n of BACKUP_NODES){ const s=await db.ref(n).once("value"); out[n]=s.val(); }
+      const d=new Date(), p2=x=>String(x).padStart(2,"0");
+      downloadText("movetrack-backup-"+d.getFullYear()+p2(d.getMonth()+1)+p2(d.getDate())+"-"+p2(d.getHours())+p2(d.getMinutes())+".json",JSON.stringify(out,null,1),"application/json");
+      await db.ref("settings/lastBackup").set(SV());
+      auditNow("ADMIN","BACKUP","download","","full backup");
+      setMsg({ok:true,t:"BACKUP DOWNLOADED — KEEP THE FILE SOMEWHERE SAFE, OFF THIS DEVICE"});
+    }catch(e){ setMsg({ok:false,t:"BACKUP FAILED: "+((e&&e.message)||"error")}); }
+    setBusy(false);
+  };
+  return (
+    <div style={panelSt}>
+      <div style={{fontSize:"11px",letterSpacing:"1px",lineHeight:"1.7",color:stale?A.orange:A.dim,marginBottom:"10px"}}>
+        {last===undefined?"CHECKING...":(!last?"⚠ NO BACKUP HAS EVER BEEN TAKEN.":(stale?"⚠ LAST BACKUP WAS "+days+" DAYS AGO.":"✔ LAST BACKUP: "+days+" DAY"+(days===1?"":"S")+" AGO."))}
+        {" "}One click saves all board, vehicle, room, EVAC, map and user-list data to a file. Logs older than 180 days are cleared automatically; nothing else needs maintenance.
+      </div>
+      <button style={btnSt(stale?A.orange:A.gold)} disabled={busy} onClick={run}>{busy?"WORKING...":"DOWNLOAD FULL BACKUP"}</button>
+      {msg&&<div style={{marginTop:"10px",fontSize:"11px",letterSpacing:"1px",color:msg.ok?A.green:A.red}}>{msg.ok?"✔ ":"⚠ "}{msg.t}</div>}
+    </div>
+  );
+}
+
 function AdminTab({me,ao,evacOpen}){
   const [users,setUsers] = useState({});
   const [pres,setPres] = useState({});
@@ -847,7 +880,9 @@ function AdminTab({me,ao,evacOpen}){
       {activeAdmins<2&&<div style={{padding:"12px 14px",marginBottom:"14px",border:"1px solid "+A.orange,background:A.orange+"14",color:A.orange,fontSize:"11px",letterSpacing:"1px",lineHeight:"1.7"}}>
         ⚠ ONLY {activeAdmins} ACTIVE ADMIN ACCOUNT. Create a second (backup) admin below — if the only admin forgets their password, nobody can manage users on the free plan.
       </div>}
-      <div style={{...secT2,marginTop:0}}>AREA OF OPERATIONS</div>
+      <div style={{...secT2,marginTop:0}}>BACKUP</div>
+      <BackupPanel/>
+      <div style={secT2}>AREA OF OPERATIONS</div>
       <AoPanel ao={ao} evacOpen={evacOpen}/>
       <div style={secT2}>CREATE USER</div>
       <CreateUser me={me}/>
@@ -1080,6 +1115,18 @@ function App({user,profile,onLogout,onAccount}){
     });
     return()=>{ clearInterval(clk); subs.forEach(([r,cb])=>r.off("value",cb)); };
   },[]);
+
+  // Self-maintenance: whenever an admin is logged in, quietly delete log/change entries older than 180 days (500 at a time)
+  useEffect(()=>{
+    if(!isAdmin) return;
+    const cutoff=Date.now()-180*86400000;
+    ["logs","changes"].forEach(n=>{
+      db.ref(n).orderByChild("ts").endAt(cutoff).limitToFirst(500).once("value").then(s=>{
+        const u={}; s.forEach(c=>{ u[n+"/"+c.key]=null; });
+        if(Object.keys(u).length) db.ref().update(u);
+      }).catch(()=>{});
+    });
+  },[isAdmin]);
 
   // Admins get a reminder about the monthly log wipe on every tab
   useEffect(()=>{

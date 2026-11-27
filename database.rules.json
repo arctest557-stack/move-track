@@ -121,6 +121,9 @@
       },
       "nightHours": {
         ".validate": "newData.isString() && newData.val().length <= 20"
+      },
+      "lastBackup": {
+        ".validate": "newData.isNumber()"
       }
     },
     "markers": {
