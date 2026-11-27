@@ -123,6 +123,31 @@
         ".validate": "newData.isString() && newData.val().length <= 20"
       }
     },
+    "markers": {
+      ".read": "auth != null && root.child('users/'+auth.uid).exists() && root.child('users/'+auth.uid+'/disabled').val() !== true",
+      ".write": "auth != null && root.child('users/'+auth.uid).exists() && root.child('users/'+auth.uid+'/disabled').val() !== true && root.child('users/'+auth.uid+'/role').val() === 'admin'",
+      "$k": {
+        ".validate": "newData.hasChildren(['name','lat','lng'])",
+        "name": {
+          ".validate": "newData.isString() && newData.val().length <= 40"
+        },
+        "note": {
+          ".validate": "newData.isString() && newData.val().length <= 80"
+        },
+        "color": {
+          ".validate": "newData.isString() && newData.val().matches(/^#[0-9a-fA-F]{6}$/)"
+        },
+        "lat": {
+          ".validate": "newData.isNumber() && newData.val() >= -90 && newData.val() <= 90"
+        },
+        "lng": {
+          ".validate": "newData.isNumber() && newData.val() >= -180 && newData.val() <= 180"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
     "restrictions": {
       ".read": "auth != null && root.child('users/'+auth.uid).exists() && root.child('users/'+auth.uid+'/disabled').val() !== true",
       ".write": "auth != null && root.child('users/'+auth.uid).exists() && root.child('users/'+auth.uid+'/disabled').val() !== true && root.child('users/'+auth.uid+'/role').val() === 'admin'",
@@ -145,6 +170,19 @@
         },
         "radiusKm": {
           ".validate": "newData.isNumber() && newData.val() >= 0.1 && newData.val() <= 500"
+        },
+        "pts": {
+          "$i": {
+            "lat": {
+              ".validate": "newData.isNumber() && newData.val() >= -90 && newData.val() <= 90"
+            },
+            "lng": {
+              ".validate": "newData.isNumber() && newData.val() >= -180 && newData.val() <= 180"
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
         },
         "$other": {
           ".validate": false

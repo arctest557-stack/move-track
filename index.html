@@ -1014,6 +1014,7 @@ function App({user,profile,onLogout,onAccount}){
   const [fpNums,setFpNums] = useState({});
   const [evacData,setEvacData] = useState({});
   const [restrictions,setRestrictions] = useState({});
+  const [markers,setMarkers] = useState({});
   const [nightHours,setNightHours] = useState("2000-0600");
   const [installable,setInstallable] = useState(!!window.deferredInstallPrompt);
   const [installed,setInstalled] = useState(false);
@@ -1069,6 +1070,7 @@ function App({user,profile,onLogout,onAccount}){
     on("fpnumbers",snap=>{ setFpNums(snap.val()||{}); });
     on("evac",snap=>{ setEvacData(snap.val()||{}); });
     on("restrictions",snap=>{ setRestrictions(snap.val()||{}); });
+    on("markers",snap=>{ setMarkers(snap.val()||{}); });
     on("settings",snap=>{
       const v=snap.val()||{}; const a=v.ao||{};
       AO.tz = a.tz||"UTC"; AO.set = !!a.country;
@@ -1548,7 +1550,7 @@ function App({user,profile,onLogout,onAccount}){
         {tab==="evac"&&<fieldset disabled={!canEvac}>{!canEvac&&<div style={{marginBottom:"12px",padding:"8px 14px",border:"1px solid #1e2630",background:"#0d1117",color:"#8a9aaa",fontSize:"11px",letterSpacing:"1px"}}>👁 VIEW ONLY — EVAC editing is limited to admins and the EVAC (Force Protection) function.</div>}<EvacTab evacData={evacData} writeEvac={writeEvac} setEvacCount={setEvacCount} vehicles={vehicles} rows={rows} f={f} s={s}/></fieldset>}
 
         {/* AO MAP TAB */}
-        {tab==="map"&&<AOMap f={f} rows={rows} locs2={locs2} ao={ao} myUid={myUid} canEditOthers={canEditOthers} setPersonLocation={setPersonLocation} isAdmin={isAdmin} restrictions={restrictions} nightHours={nightHours}/>}
+        {tab==="map"&&<AOMap f={f} rows={rows} locs2={locs2} ao={ao} myUid={myUid} canEditOthers={canEditOthers} setPersonLocation={setPersonLocation} isAdmin={isAdmin} restrictions={restrictions} nightHours={nightHours} markers={markers}/>}
 
       </div>
 
@@ -1558,7 +1560,7 @@ function App({user,profile,onLogout,onAccount}){
   );
 }
 
-function AOMap({f,rows,locs2,ao,myUid,canEditOthers,setPersonLocation,isAdmin,restrictions,nightHours}){
+function AOMap({f,rows,locs2,ao,myUid,canEditOthers,setPersonLocation,isAdmin,restrictions,nightHours,markers}){
   const mapRef = React.useRef(null);
   const mapInstanceRef = React.useRef(null);
   const districtLayersRef = React.useRef([]);
@@ -1569,6 +1571,7 @@ function AOMap({f,rows,locs2,ao,myUid,canEditOthers,setPersonLocation,isAdmin,re
   const circleLayersRef = React.useRef([]);
   const previewRef = React.useRef(null);
   const baseLayersRef = React.useRef({});
+  const previewMRef = React.useRef(null);
   const [base,setBase] = React.useState("dark");
   const markerRef = React.useRef(null);
   const [selected,setSelected] = React.useState(null);
@@ -1587,6 +1590,15 @@ function AOMap({f,rows,locs2,ao,myUid,canEditOthers,setPersonLocation,isAdmin,re
   const [tileNote,setTileNote] = React.useState("");
   const [draft,setDraft] = React.useState({name:"",type:"off",radius:"2",lat:null,lng:null});
   const [placing,setPlacing] = React.useState(false);
+  const [mDraft,setMDraft] = React.useState({name:"",note:"",color:"#3498db",lat:null,lng:null});
+  const [placingM,setPlacingM] = React.useState(false);
+  const [pDraft,setPDraft] = React.useState({name:"",type:"off",pts:[]});
+  const [placingP,setPlacingP] = React.useState(false);
+  const placingPRef = React.useRef(false); placingPRef.current = placingP;
+  const previewPRef = React.useRef(null);
+  const [showMk,setShowMk] = React.useState(true);
+  const mkLayersRef = React.useRef([]);
+  const placingMRef = React.useRef(false); placingMRef.current = placingM;
   const [adminMsg,setAdminMsg] = React.useState(null);
   const [nh,setNh] = React.useState(nightHours);
   const fnt = f.mono;
@@ -1642,7 +1654,10 @@ function AOMap({f,rows,locs2,ao,myUid,canEditOthers,setPersonLocation,isAdmin,re
   };
   const chooseResult = r => {
     const lat=parseFloat(r.lat), lng=parseFloat(r.lon);
-    if(placingRef.current){
+    if(placingMRef.current){
+      setMDraft(d=>({...d,lat:lat,lng:lng,name:d.name||r.short}));
+      if(mapInstanceRef.current) mapInstanceRef.current.setView([lat,lng],12);
+    } else if(placingRef.current){
       setDraft(d=>({...d,lat:lat,lng:lng,name:d.name||r.short}));
       if(mapInstanceRef.current) mapInstanceRef.current.setView([lat,lng],11);
     } else pickPlace(r.short,lat,lng,11);
@@ -1682,7 +1697,7 @@ function AOMap({f,rows,locs2,ao,myUid,canEditOthers,setPersonLocation,isAdmin,re
     if(!nm) return setAdminMsg({ok:false,t:"GIVE THE AREA A NAME"});
     if(draft.lat==null) return setAdminMsg({ok:false,t:"TAP THE MAP (OR CHOOSE A SEARCH RESULT) TO PLACE THE CENTRE"});
     if(!(rad>=0.1&&rad<=500)) return setAdminMsg({ok:false,t:"RADIUS MUST BE 0.1 – 500 KM"});
-    const key = keyOf("circle_"+nm);
+    const key = keyOf("c_"+nm).slice(0,30)+"_"+Date.now();
     db.ref("restrictions/"+key).set({type:draft.type,name:nm,level:"circle",lat:+draft.lat.toFixed(5),lng:+draft.lng.toFixed(5),radiusKm:rad})
       .then(()=>{ auditNow("MAP",nm,"restriction (circle)","none",draft.type+" r="+rad+"km"); setAdminMsg({ok:true,t:"AREA SAVED"}); setDraft({name:"",type:"off",radius:"2",lat:null,lng:null}); setPlacing(false); })
       .catch(()=>setAdminMsg({ok:false,t:"COULD NOT SAVE"}));
@@ -1691,6 +1706,28 @@ function AOMap({f,rows,locs2,ao,myUid,canEditOthers,setPersonLocation,isAdmin,re
     if(!window.confirm("Remove "+r.name+" ("+(r.type==="off"?"off limits":"night restricted")+")?")) return;
     db.ref("restrictions/"+key).remove().then(()=>auditNow("MAP",r.name,"restriction",r.type,"none"));
   };
+  const savePoly = () => {
+    setAdminMsg(null);
+    const nm=pDraft.name.trim().toUpperCase().slice(0,60);
+    if(!nm) return setAdminMsg({ok:false,t:"GIVE THE AREA A NAME"});
+    if(pDraft.pts.length<3) return setAdminMsg({ok:false,t:"TAP AT LEAST 3 CORNERS ON THE MAP"});
+    const pts={}; pDraft.pts.forEach((q,i)=>{ pts[i]={lat:q[0],lng:q[1]}; });
+    db.ref("restrictions/"+keyOf("p_"+nm).slice(0,30)+"_"+Date.now()).set({type:pDraft.type,name:nm,level:"poly",pts:pts})
+      .then(()=>{ auditNow("MAP",nm,"restriction (shape)","none",pDraft.type+" "+pDraft.pts.length+" points"); setAdminMsg({ok:true,t:"AREA SAVED"}); setPDraft({name:"",type:pDraft.type,pts:[]}); setPlacingP(false); })
+      .catch(()=>setAdminMsg({ok:false,t:"COULD NOT SAVE"}));
+  };
+  const saveMarker = () => {
+    setAdminMsg(null);
+    const nm=mDraft.name.trim().toUpperCase().slice(0,40);
+    if(!nm) return setAdminMsg({ok:false,t:"GIVE THE MARKER A NAME"});
+    if(mDraft.lat==null) return setAdminMsg({ok:false,t:"TAP THE MAP (OR CHOOSE A SEARCH RESULT) TO PLACE THE MARKER"});
+    const o={name:nm,color:mDraft.color,lat:+mDraft.lat.toFixed(5),lng:+mDraft.lng.toFixed(5)};
+    const note=mDraft.note.trim().slice(0,80); if(note) o.note=note;
+    db.ref("markers/"+keyOf(nm+"_"+Date.now())).set(o)
+      .then(()=>{ auditNow("MAP",nm,"marker","none","placed"); setAdminMsg({ok:true,t:"MARKER SAVED"}); setMDraft({name:"",note:"",color:mDraft.color,lat:null,lng:null}); setPlacingM(false); })
+      .catch(()=>setAdminMsg({ok:false,t:"COULD NOT SAVE"}));
+  };
+  const removeMarker = (k,m) => { if(!window.confirm("Remove marker "+m.name+"?")) return; db.ref("markers/"+k).remove().then(()=>auditNow("MAP",m.name,"marker","placed","removed")); };
   const saveNight = () => {
     const v=nh.trim().slice(0,20); if(!v) return;
     db.ref("settings/nightHours").set(v).then(()=>{ auditNow("MAP","NIGHT HOURS","hours",nightHours,v); setAdminMsg({ok:true,t:"NIGHT HOURS SAVED"}); });
@@ -1720,7 +1757,7 @@ function AOMap({f,rows,locs2,ao,myUid,canEditOthers,setPersonLocation,isAdmin,re
     });
     baseLayers.dark.addTo(map);
 
-    map.on('click',e=>{ if(placingRef.current) setDraft(d=>({...d,lat:e.latlng.lat,lng:e.latlng.lng})); });
+    map.on('click',e=>{ if(placingRef.current) setDraft(d=>({...d,lat:e.latlng.lat,lng:e.latlng.lng})); else if(placingMRef.current) setMDraft(d=>({...d,lat:e.latlng.lat,lng:e.latlng.lng})); else if(placingPRef.current) setPDraft(d=>d.pts.length>=50?d:({...d,pts:[...d.pts,[+e.latlng.lat.toFixed(5),+e.latlng.lng.toFixed(5)]]})); });
 
     // Optional KML overlay (map.kml). Layer type is read from the style colour used in the KML.
     const getLayerType = (feature)=>{
@@ -1793,7 +1830,7 @@ function AOMap({f,rows,locs2,ao,myUid,canEditOthers,setPersonLocation,isAdmin,re
           layer.bindTooltip(()=>{ const r=restrictionsRef.current[keyOf(levelRef.current+"_"+nm)]; return tipHtml(nm,r&&r.type); },{sticky:true,opacity:1});
           layer.on('mouseover',()=>{ if(!placingRef.current) layer.setStyle(HOV_STYLE); });
           layer.on('mouseout',()=>{ applyStylesRef.current(); });
-          layer.on('click',()=>{ if(placingRef.current) return; selectRef.current(nm); });
+          layer.on('click',()=>{ if(placingRef.current||placingMRef.current||placingPRef.current) return; selectRef.current(nm); });
         }
       }).addTo(map);
       group.bringToBack();
@@ -1825,9 +1862,12 @@ function AOMap({f,rows,locs2,ao,myUid,canEditOthers,setPersonLocation,isAdmin,re
     const map = mapInstanceRef.current; if(!map) return;
     circleLayersRef.current.forEach(l=>{ try{ l.remove(); }catch(e){} }); circleLayersRef.current=[];
     Object.entries(restrictions).forEach(([k,r])=>{
-      if(!r||r.level!=="circle"||r.lat==null) return;
+      if(!r) return;
       if(r.type==="off"&&!showOff) return; if(r.type==="night"&&!showNight) return;
-      const c = L.circle([r.lat,r.lng],{radius:(r.radiusKm||1)*1000,...(r.type==="off"?OFF_STYLE:NIGHT_STYLE)}).addTo(map);
+      let c;
+      if(r.level==="poly"&&r.pts){ const pts=Object.values(r.pts).map(q=>[q.lat,q.lng]); if(pts.length<3) return; c=L.polygon(pts,r.type==="off"?OFF_STYLE:NIGHT_STYLE).addTo(map); }
+      else if(r.level==="circle"&&r.lat!=null){ c = L.circle([r.lat,r.lng],{radius:(r.radiusKm||1)*1000,...(r.type==="off"?OFF_STYLE:NIGHT_STYLE)}).addTo(map); }
+      else return;
       c.bindTooltip(tipHtml(r.name,r.type),{sticky:true,opacity:1});
       circleLayersRef.current.push(c);
     });
@@ -1840,6 +1880,37 @@ function AOMap({f,rows,locs2,ao,myUid,canEditOthers,setPersonLocation,isAdmin,re
     const rad=parseFloat(draft.radius);
     if(draft.lat!=null&&rad>0) previewRef.current = L.circle([draft.lat,draft.lng],{radius:rad*1000,color:"#fff",weight:2,dashArray:"6 4",fillColor:draft.type==="off"?"#e74c3c":"#f39c12",fillOpacity:0.25}).addTo(map);
   },[draft.lat,draft.lng,draft.radius,draft.type]);
+
+  React.useEffect(()=>{
+    const map=mapInstanceRef.current; if(!map) return;
+    if(previewPRef.current){ try{ previewPRef.current.remove(); }catch(e){} previewPRef.current=null; }
+    const g=L.layerGroup(); const col=pDraft.type==="off"?"#e74c3c":"#f39c12";
+    if(pDraft.pts.length>=3) L.polygon(pDraft.pts,{color:"#fff",weight:2,dashArray:"6 4",fillColor:col,fillOpacity:0.25}).addTo(g);
+    else if(pDraft.pts.length===2) L.polyline(pDraft.pts,{color:"#fff",weight:2,dashArray:"6 4"}).addTo(g);
+    pDraft.pts.forEach(q=>L.circleMarker(q,{radius:5,color:"#fff",weight:2,fillColor:col,fillOpacity:1}).addTo(g));
+    g.addTo(map); previewPRef.current=g;
+  },[pDraft.pts,pDraft.type]);
+
+  // admin markers (everyone sees them)
+  React.useEffect(()=>{
+    const map=mapInstanceRef.current; if(!map) return;
+    mkLayersRef.current.forEach(l=>{ try{ l.remove(); }catch(e){} }); mkLayersRef.current=[];
+    if(!showMk) return;
+    Object.values(markers||{}).forEach(m=>{
+      if(!m||m.lat==null) return;
+      const c=/^#[0-9a-fA-F]{6}$/.test(m.color||"")?m.color:"#3498db";
+      const icon=L.divIcon({className:"",iconSize:[22,30],iconAnchor:[11,30],html:'<div style="width:22px;height:22px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:'+c+';border:2px solid #fff;box-shadow:0 0 4px #000;margin-top:2px"></div>'});
+      const mk=L.marker([m.lat,m.lng],{icon:icon}).addTo(map);
+      const esc=s=>String(s).replace(/[&<>"]/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[ch]));
+      mk.bindTooltip('<div style="font-family:Share Tech Mono,monospace;font-size:11px;font-weight:bold;color:#fff;background:#0f1318;padding:4px 8px;border:1px solid '+c+'">'+esc(m.name)+(m.note?'<br><span style="font-weight:normal;color:#8a9aaa">'+esc(m.note)+'</span>':'')+'</div>',{direction:"top",offset:[0,-26],opacity:1});
+      mkLayersRef.current.push(mk);
+    });
+  },[markers,showMk]);
+  React.useEffect(()=>{
+    const map=mapInstanceRef.current; if(!map) return;
+    if(previewMRef.current){ try{ previewMRef.current.remove(); }catch(e){} previewMRef.current=null; }
+    if(mDraft.lat!=null) previewMRef.current=L.circleMarker([mDraft.lat,mDraft.lng],{radius:10,color:"#fff",weight:2,dashArray:"4 3",fillColor:mDraft.color,fillOpacity:0.6}).addTo(map);
+  },[mDraft.lat,mDraft.lng,mDraft.color]);
 
   // KML toggles
   React.useEffect(()=>{
@@ -1880,6 +1951,7 @@ function AOMap({f,rows,locs2,ao,myUid,canEditOthers,setPersonLocation,isAdmin,re
         <span style={{fontSize:"9px",color:"#5a6a7a",letterSpacing:"2px",fontFamily:fnt}}>SHOW:</span>
         {toggleBtn(showOff,()=>setShowOff(v=>!v),"#e74c3c","🔴 OFF LIMITS")}
         {toggleBtn(showNight,()=>setShowNight(v=>!v),"#f39c12","🟡 NIGHT RESTRICTION")}
+        {toggleBtn(showMk,()=>setShowMk(v=>!v),"#3498db","📍 MARKERS")}
         <span style={{fontSize:"9px",color:"#5a6a7a",letterSpacing:"2px",fontFamily:fnt,marginLeft:"10px"}}>MAP:</span>
         {toggleBtn(base==="dark",()=>setBase("dark"),"#c9a84c","DARK")}
         {toggleBtn(base==="street",()=>setBase("street"),"#c9a84c","STREET")}
@@ -1933,7 +2005,7 @@ function AOMap({f,rows,locs2,ao,myUid,canEditOthers,setPersonLocation,isAdmin,re
         </div>
       )}
 
-      <div ref={mapRef} style={{height:"520px",border:"1px solid #1e2630",width:"100%",touchAction:"manipulation",background:"#0b1118",cursor:placing?"crosshair":""}}/>
+      <div ref={mapRef} style={{height:"520px",border:"1px solid #1e2630",width:"100%",touchAction:"manipulation",background:"#0b1118",cursor:(placing||placingM||placingP)?"crosshair":""}}/>
 
       {/* Search + regions */}
       <div style={{display:"flex",gap:"8px",margin:"12px 0 10px",flexWrap:"wrap"}}>
@@ -1997,20 +2069,57 @@ function AOMap({f,rows,locs2,ao,myUid,canEditOthers,setPersonLocation,isAdmin,re
             <span style={{fontSize:"10px",color:"#5a6a7a",fontFamily:fnt}}>KM RADIUS</span>
           </div>
           <div style={{display:"flex",gap:"8px",flexWrap:"wrap",alignItems:"center"}}>
-            <button style={smBtn(placing?"#2ecc71":"#3498db")} onClick={()=>setPlacing(p=>!p)}>{placing?"✔ TAP THE MAP NOW — CLICK TO STOP":"📍 PLACE CENTRE ON MAP"}</button>
+            <button style={smBtn(placing?"#2ecc71":"#3498db")} onClick={()=>{ setPlacing(p=>!p); setPlacingM(false); setPlacingP(false); }}>{placing?"✔ TAP THE MAP NOW — CLICK TO STOP":"📍 PLACE CENTRE ON MAP"}</button>
             <button style={smBtn("#c9a84c")} onClick={saveCircle}>SAVE AREA</button>
             {draft.lat!=null&&<span style={{fontSize:"10px",color:"#8a9aaa",fontFamily:fnt}}>CENTRE {draft.lat.toFixed(4)}, {draft.lng.toFixed(4)}</span>}
           </div>
           <div style={{fontSize:"10px",color:"#5a6a7a",letterSpacing:"1px",marginTop:"6px",fontFamily:fnt}}>Tip: while placing, a place-search result also sets the centre.</div>
           {adminMsg&&<div style={{marginTop:"10px",fontSize:"11px",letterSpacing:"1px",fontFamily:fnt,color:adminMsg.ok?"#2ecc71":"#e74c3c"}}>{adminMsg.ok?"✔ ":"⚠ "}{adminMsg.t}</div>}
 
+          <div style={{fontSize:"10px",color:"#5a6a7a",letterSpacing:"2px",margin:"18px 0 6px",fontFamily:fnt}}>DRAW A CUSTOM SHAPE (TAP EACH CORNER ON THE MAP)</div>
+          <div style={{display:"flex",gap:"8px",flexWrap:"wrap",alignItems:"center",marginBottom:"8px"}}>
+            <input value={pDraft.name} onChange={e=>setPDraft(d=>({...d,name:e.target.value}))} maxLength={40} placeholder="AREA NAME" style={{...inSt,flex:"1 1 160px"}}/>
+            <select value={pDraft.type} onChange={e=>setPDraft(d=>({...d,type:e.target.value}))} style={{...inSt,appearance:"none",WebkitAppearance:"none",cursor:"pointer"}}>
+              <option value="off">🔴 OFF LIMITS</option><option value="night">🟡 NIGHT RESTRICTED</option>
+            </select>
+          </div>
+          <div style={{display:"flex",gap:"8px",flexWrap:"wrap",alignItems:"center"}}>
+            <button style={smBtn(placingP?"#2ecc71":"#3498db")} onClick={()=>{ setPlacingP(p=>!p); setPlacing(false); setPlacingM(false); }}>{placingP?"✔ TAPPING CORNERS — CLICK TO STOP":"✏ DRAW SHAPE ON MAP"}</button>
+            <button style={smBtn("#5a6a7a")} onClick={()=>setPDraft(d=>({...d,pts:d.pts.slice(0,-1)}))}>UNDO CORNER</button>
+            <button style={smBtn("#5a6a7a")} onClick={()=>setPDraft(d=>({...d,pts:[]}))}>CLEAR</button>
+            <button style={smBtn("#c9a84c")} onClick={savePoly}>SAVE SHAPE</button>
+            <span style={{fontSize:"10px",color:"#8a9aaa",fontFamily:fnt}}>{pDraft.pts.length} CORNER{pDraft.pts.length===1?"":"S"} (3–50)</span>
+          </div>
+          <div style={{fontSize:"10px",color:"#5a6a7a",letterSpacing:"1px",marginTop:"6px",fontFamily:fnt}}>You can add as many areas as you need — each one is saved separately and can be removed from the list below.</div>
+
+          <div style={{fontSize:"10px",color:"#5a6a7a",letterSpacing:"2px",margin:"18px 0 6px",fontFamily:fnt}}>PLACE A MARKER (EVERYONE SEES IT)</div>
+          <div style={{display:"flex",gap:"8px",flexWrap:"wrap",alignItems:"center",marginBottom:"8px"}}>
+            <input value={mDraft.name} onChange={e=>setMDraft(d=>({...d,name:e.target.value}))} maxLength={40} placeholder="MARKER NAME" style={{...inSt,flex:"1 1 150px"}}/>
+            <input value={mDraft.note} onChange={e=>setMDraft(d=>({...d,note:e.target.value}))} maxLength={80} placeholder="NOTE (OPTIONAL)" style={{...inSt,flex:"2 1 200px"}}/>
+            <select value={mDraft.color} onChange={e=>setMDraft(d=>({...d,color:e.target.value}))} style={{...inSt,appearance:"none",WebkitAppearance:"none",cursor:"pointer",color:mDraft.color}}>
+              {[["#3498db","BLUE"],["#2ecc71","GREEN"],["#e74c3c","RED"],["#f1c40f","YELLOW"],["#e67e22","ORANGE"],["#9b59b6","PURPLE"],["#ffffff","WHITE"]].map(([c,n])=><option key={c} value={c} style={{color:c}}>{n}</option>)}
+            </select>
+          </div>
+          <div style={{display:"flex",gap:"8px",flexWrap:"wrap",alignItems:"center"}}>
+            <button style={smBtn(placingM?"#2ecc71":"#3498db")} onClick={()=>{ setPlacingM(p=>!p); setPlacing(false); setPlacingP(false); }}>{placingM?"✔ TAP THE MAP NOW — CLICK TO STOP":"📍 PLACE MARKER ON MAP"}</button>
+            <button style={smBtn("#c9a84c")} onClick={saveMarker}>SAVE MARKER</button>
+            {mDraft.lat!=null&&<span style={{fontSize:"10px",color:"#8a9aaa",fontFamily:fnt}}>AT {mDraft.lat.toFixed(4)}, {mDraft.lng.toFixed(4)}</span>}
+          </div>
+          <div style={{fontSize:"10px",color:"#5a6a7a",letterSpacing:"2px",margin:"18px 0 6px",fontFamily:fnt}}>CURRENT MARKERS ({Object.keys(markers||{}).length})</div>
+          {Object.entries(markers||{}).map(([k,m])=>(
+            <div key={k} style={{display:"flex",alignItems:"center",gap:"10px",padding:"5px 0",borderBottom:"1px solid #1e263088",fontFamily:fnt,fontSize:"11px",letterSpacing:"1px",flexWrap:"wrap"}}>
+              <span style={{color:m.color}}>📍</span><span style={{color:"#fff",flex:"1 1 140px"}}>{m.name}</span><span style={{color:"#5a6a7a",flex:"2 1 160px"}}>{m.note||""}</span>
+              <button style={{...smBtn("#3498db"),padding:"3px 8px"}} onClick={()=>mapInstanceRef.current&&mapInstanceRef.current.setView([m.lat,m.lng],13)}>GO TO</button>
+              <button style={{...smBtn("#e74c3c"),padding:"3px 8px"}} onClick={()=>removeMarker(k,m)}>REMOVE</button>
+            </div>
+          ))}
           <div style={{fontSize:"10px",color:"#5a6a7a",letterSpacing:"2px",margin:"18px 0 6px",fontFamily:fnt}}>CURRENT RESTRICTIONS ({restList.length})</div>
           {restList.length===0&&<div style={{fontSize:"11px",color:"#5a6a7a",fontFamily:fnt}}>None set.</div>}
           {restList.map(([k,r])=>(
             <div key={k} style={{display:"flex",alignItems:"center",gap:"10px",padding:"5px 0",borderBottom:"1px solid #1e263088",fontFamily:fnt,fontSize:"11px",letterSpacing:"1px",flexWrap:"wrap"}}>
               <span style={{color:r.type==="off"?"#e74c3c":"#f39c12",minWidth:"120px"}}>{r.type==="off"?"🔴 OFF LIMITS":"🟡 NIGHT"}</span>
               <span style={{color:"#fff",flex:"1 1 160px"}}>{r.name}</span>
-              <span style={{color:"#5a6a7a"}}>{r.level==="circle"?"CIRCLE "+r.radiusKm+" KM":(r.level==="ADM2"?"SUB-REGION":"REGION")}</span>
+              <span style={{color:"#5a6a7a"}}>{r.level==="circle"?"CIRCLE "+r.radiusKm+" KM":(r.level==="poly"?"SHAPE":(r.level==="ADM2"?"SUB-REGION":"REGION"))}</span>
               <button style={{...smBtn("#e74c3c"),padding:"3px 8px"}} onClick={()=>removeRestriction(k,r)}>REMOVE</button>
             </div>
           ))}
