@@ -1,0 +1,321 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "users": {
+      ".read": "auth != null && root.child('users/'+auth.uid).exists() && root.child('users/'+auth.uid+'/disabled').val() !== true && root.child('users/'+auth.uid+'/role').val() === 'admin'",
+      ".write": "auth != null && root.child('users/'+auth.uid).exists() && root.child('users/'+auth.uid+'/disabled').val() !== true && root.child('users/'+auth.uid+'/role').val() === 'admin'",
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".validate": "newData.hasChildren(['username','role'])",
+        "username": {
+          ".validate": "newData.isString() && newData.val().length >= 3 && newData.val().length <= 30"
+        },
+        "role": {
+          ".validate": "newData.val() === 'admin' || newData.val() === 'user'"
+        },
+        "disabled": {
+          ".validate": "newData.isBoolean()"
+        },
+        "idleMin": {
+          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1440"
+        }
+      }
+    },
+    "roster": {
+      ".read": "auth != null && root.child('users/'+auth.uid).exists() && root.child('users/'+auth.uid+'/disabled').val() !== true",
+      ".write": "auth != null && root.child('users/'+auth.uid).exists() && root.child('users/'+auth.uid+'/disabled').val() !== true && root.child('users/'+auth.uid+'/role').val() === 'admin'",
+      "$uid": {
+        ".validate": "newData.hasChildren(['name','rank'])",
+        "name": {
+          ".validate": "newData.isString() && newData.val().length <= 25"
+        },
+        "rank": {
+          ".validate": "newData.isString() && newData.val().length <= 12"
+        },
+        "rankOrder": {
+          ".validate": "newData.isNumber()"
+        },
+        "onBoard": {
+          ".validate": "newData.isBoolean()"
+        }
+      }
+    },
+    "board": {
+      ".read": "auth != null && root.child('users/'+auth.uid).exists() && root.child('users/'+auth.uid+'/disabled').val() !== true",
+      "$uid": {
+        ".write": "auth != null && root.child('users/'+auth.uid).exists() && root.child('users/'+auth.uid+'/disabled').val() !== true && (auth.uid === $uid || root.child('users/'+auth.uid+'/role').val() === 'admin' || root.child('users/'+auth.uid+'/perms/editOthers').val() === true)",
+        "location": {
+          ".validate": "newData.isString() && newData.val().length <= 80"
+        },
+        "location2": {
+          ".validate": "newData.isString() && newData.val().length <= 80"
+        },
+        "status": {
+          ".validate": "newData.isString() && newData.val().length <= 80"
+        },
+        "dueBack": {
+          ".validate": "newData.isString() && newData.val().length <= 80"
+        },
+        "dueDate": {
+          ".validate": "newData.isString() && newData.val().length <= 80"
+        },
+        "notes": {
+          ".validate": "newData.isString() && newData.val().length <= 80"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "locations": {
+      ".read": "auth != null && root.child('users/'+auth.uid).exists() && root.child('users/'+auth.uid+'/disabled').val() !== true",
+      ".write": "auth != null && root.child('users/'+auth.uid).exists() && root.child('users/'+auth.uid+'/disabled').val() !== true && root.child('users/'+auth.uid+'/role').val() === 'admin'",
+      "$i": {
+        ".validate": "newData.isString() && newData.val().length <= 40"
+      }
+    },
+    "statuses": {
+      ".read": "auth != null && root.child('users/'+auth.uid).exists() && root.child('users/'+auth.uid+'/disabled').val() !== true",
+      ".write": "auth != null && root.child('users/'+auth.uid).exists() && root.child('users/'+auth.uid+'/disabled').val() !== true && root.child('users/'+auth.uid+'/role').val() === 'admin'",
+      "$i": {
+        ".validate": "newData.isString() && newData.val().length <= 40"
+      }
+    },
+    "locations2": {
+      ".read": "auth != null && root.child('users/'+auth.uid).exists() && root.child('users/'+auth.uid+'/disabled').val() !== true",
+      ".write": "auth != null && root.child('users/'+auth.uid).exists() && root.child('users/'+auth.uid+'/disabled').val() !== true && root.child('users/'+auth.uid+'/role').val() === 'admin'",
+      "$k": {
+        ".write": "auth != null && root.child('users/'+auth.uid).exists() && root.child('users/'+auth.uid+'/disabled').val() !== true && !data.exists() && newData.exists()",
+        ".validate": "newData.isString() && newData.val().length <= 40"
+      }
+    },
+    "settings": {
+      ".read": "auth != null && root.child('users/'+auth.uid).exists() && root.child('users/'+auth.uid+'/disabled').val() !== true",
+      ".write": "auth != null && root.child('users/'+auth.uid).exists() && root.child('users/'+auth.uid+'/disabled').val() !== true && root.child('users/'+auth.uid+'/role').val() === 'admin'",
+      "ao": {
+        "country": {
+          ".validate": "newData.isString() && newData.val().length <= 3"
+        },
+        "iso3": {
+          ".validate": "newData.isString() && newData.val().length <= 3"
+        },
+        "name": {
+          ".validate": "newData.isString() && newData.val().length <= 80"
+        },
+        "tz": {
+          ".validate": "newData.isString() && newData.val().length <= 60"
+        },
+        "lat": {
+          ".validate": "newData.isNumber()"
+        },
+        "lng": {
+          ".validate": "newData.isNumber()"
+        },
+        "zoom": {
+          ".validate": "newData.isNumber()"
+        }
+      },
+      "evacOpen": {
+        ".validate": "newData.isBoolean()"
+      },
+      "nightHours": {
+        ".validate": "newData.isString() && newData.val().length <= 20"
+      }
+    },
+    "restrictions": {
+      ".read": "auth != null && root.child('users/'+auth.uid).exists() && root.child('users/'+auth.uid+'/disabled').val() !== true",
+      ".write": "auth != null && root.child('users/'+auth.uid).exists() && root.child('users/'+auth.uid+'/disabled').val() !== true && root.child('users/'+auth.uid+'/role').val() === 'admin'",
+      "$k": {
+        ".validate": "newData.hasChildren(['type','name'])",
+        "type": {
+          ".validate": "newData.val() === 'off' || newData.val() === 'night'"
+        },
+        "name": {
+          ".validate": "newData.isString() && newData.val().length <= 60"
+        },
+        "level": {
+          ".validate": "newData.isString() && newData.val().length <= 10"
+        },
+        "lat": {
+          ".validate": "newData.isNumber() && newData.val() >= -90 && newData.val() <= 90"
+        },
+        "lng": {
+          ".validate": "newData.isNumber() && newData.val() >= -180 && newData.val() <= 180"
+        },
+        "radiusKm": {
+          ".validate": "newData.isNumber() && newData.val() >= 0.1 && newData.val() <= 500"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "vehicles": {
+      ".read": "auth != null && root.child('users/'+auth.uid).exists() && root.child('users/'+auth.uid+'/disabled').val() !== true",
+      "$i": {
+        ".write": "auth != null && root.child('users/'+auth.uid).exists() && root.child('users/'+auth.uid+'/disabled').val() !== true && (root.child('users/'+auth.uid+'/role').val() === 'admin' || root.child('users/'+auth.uid+'/perms/vehicles').val() === true)",
+        "make": {
+          ".validate": "newData.isString() && newData.val().length <= 60"
+        },
+        "model": {
+          ".validate": "newData.isString() && newData.val().length <= 60"
+        },
+        "colour": {
+          ".validate": "newData.isString() && newData.val().length <= 60"
+        },
+        "vrn": {
+          ".validate": "newData.isString() && newData.val().length <= 60"
+        },
+        "name": {
+          ".validate": "newData.isString() && newData.val().length <= 60"
+        },
+        "location": {
+          ".validate": "newData.isString() && newData.val().length <= 60"
+        },
+        "purpose": {
+          ".validate": "newData.isString() && newData.val().length <= 60"
+        },
+        "dateon": {
+          ".validate": "newData.isString() && newData.val().length <= 60"
+        },
+        "mileageon": {
+          ".validate": "newData.isString() && newData.val().length <= 60"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "fuelcards": {
+      ".read": "auth != null && root.child('users/'+auth.uid).exists() && root.child('users/'+auth.uid+'/disabled').val() !== true",
+      "$i": {
+        ".write": "auth != null && root.child('users/'+auth.uid).exists() && root.child('users/'+auth.uid+'/disabled').val() !== true && (root.child('users/'+auth.uid+'/role').val() === 'admin' || root.child('users/'+auth.uid+'/perms/vehicles').val() === true)",
+        "cardnum": {
+          ".validate": "newData.isString() && newData.val().length <= 80"
+        },
+        "name": {
+          ".validate": "newData.isString() && newData.val().length <= 80"
+        },
+        "notes": {
+          ".validate": "newData.isString() && newData.val().length <= 80"
+        },
+        "location": {
+          ".validate": "newData.isString() && newData.val().length <= 80"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "rooms": {
+      ".read": "auth != null && root.child('users/'+auth.uid).exists() && root.child('users/'+auth.uid+'/disabled').val() !== true",
+      "$k": {
+        ".write": "auth != null && root.child('users/'+auth.uid).exists() && root.child('users/'+auth.uid+'/disabled').val() !== true && (root.child('users/'+auth.uid+'/role').val() === 'admin' || root.child('users/'+auth.uid+'/perms/rooms').val() === true)",
+        ".validate": "newData.isString() && newData.val().length <= 40"
+      }
+    },
+    "fpnumbers": {
+      ".read": "auth != null && root.child('users/'+auth.uid).exists() && root.child('users/'+auth.uid+'/disabled').val() !== true",
+      "$k": {
+        ".write": "auth != null && root.child('users/'+auth.uid).exists() && root.child('users/'+auth.uid+'/disabled').val() !== true && (root.child('users/'+auth.uid+'/role').val() === 'admin' || root.child('users/'+auth.uid+'/perms/fp').val() === true)",
+        ".validate": "newData.isString() && newData.val().length <= 40"
+      }
+    },
+    "evac": {
+      ".read": "auth != null && root.child('users/'+auth.uid).exists() && root.child('users/'+auth.uid+'/disabled').val() !== true",
+      "$v": {
+        ".write": "auth != null && root.child('users/'+auth.uid).exists() && root.child('users/'+auth.uid+'/disabled').val() !== true && (root.child('users/'+auth.uid+'/role').val() === 'admin' || root.child('users/'+auth.uid+'/perms/evac').val() === true || root.child('settings/evacOpen').val() !== false)",
+        "$f": {
+          ".validate": "newData.isString() && newData.val().length <= 80"
+        }
+      }
+    },
+    "presence": {
+      ".read": "auth != null && root.child('users/'+auth.uid).exists() && root.child('users/'+auth.uid+'/disabled').val() !== true && root.child('users/'+auth.uid+'/role').val() === 'admin'",
+      "$uid": {
+        ".write": "auth != null && root.child('users/'+auth.uid).exists() && auth.uid === $uid",
+        "username": {
+          ".validate": "newData.isString() && newData.val().length <= 30"
+        },
+        "$other": {
+          ".validate": false
+        },
+        "online": {
+          ".validate": "newData.isBoolean()"
+        },
+        "lastLogin": {
+          ".validate": "newData.isNumber()"
+        },
+        "lastLogout": {
+          ".validate": "newData.isNumber()"
+        },
+        "lastSeen": {
+          ".validate": "newData.isNumber()"
+        }
+      }
+    },
+    "logs": {
+      ".read": "auth != null && root.child('users/'+auth.uid).exists() && root.child('users/'+auth.uid+'/disabled').val() !== true && root.child('users/'+auth.uid+'/role').val() === 'admin'",
+      ".indexOn": [
+        "ts"
+      ],
+      "$id": {
+        ".write": "(auth != null && root.child('users/'+auth.uid).exists() && !data.exists() && newData.child('uid').val() === auth.uid) || (auth != null && root.child('users/'+auth.uid).exists() && root.child('users/'+auth.uid+'/disabled').val() !== true && root.child('users/'+auth.uid+'/role').val() === 'admin')",
+        ".validate": "newData.hasChildren(['uid','username','type','ts'])",
+        "uid": {
+          ".validate": "newData.isString()"
+        },
+        "username": {
+          ".validate": "newData.isString() && newData.val().length <= 30"
+        },
+        "type": {
+          ".validate": "newData.val() === 'login' || newData.val() === 'logout' || newData.val() === 'timeout' || newData.val() === 'disconnect' || newData.val() === 'blocked' || newData.val() === 'wipe'"
+        },
+        "ts": {
+          ".validate": "newData.isNumber() && newData.val() <= now"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "changes": {
+      ".read": "auth != null && root.child('users/'+auth.uid).exists() && root.child('users/'+auth.uid+'/disabled').val() !== true && root.child('users/'+auth.uid+'/role').val() === 'admin'",
+      ".indexOn": [
+        "ts"
+      ],
+      "$id": {
+        ".write": "(auth != null && root.child('users/'+auth.uid).exists() && !data.exists() && newData.child('uid').val() === auth.uid) || (auth != null && root.child('users/'+auth.uid).exists() && root.child('users/'+auth.uid+'/disabled').val() !== true && root.child('users/'+auth.uid+'/role').val() === 'admin')",
+        ".validate": "newData.hasChildren(['uid','username','area','ts'])",
+        "uid": {
+          ".validate": "newData.isString()"
+        },
+        "username": {
+          ".validate": "newData.isString() && newData.val().length <= 30"
+        },
+        "area": {
+          ".validate": "newData.isString() && newData.val().length <= 30"
+        },
+        "target": {
+          ".validate": "newData.isString() && newData.val().length <= 60"
+        },
+        "field": {
+          ".validate": "newData.isString() && newData.val().length <= 40"
+        },
+        "from": {
+          ".validate": "newData.isString() && newData.val().length <= 120"
+        },
+        "to": {
+          ".validate": "newData.isString() && newData.val().length <= 120"
+        },
+        "ts": {
+          ".validate": "newData.isNumber() && newData.val() <= now"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    }
+  }
+}

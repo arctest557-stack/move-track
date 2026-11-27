@@ -204,12 +204,57 @@ const CFG = window.MT_CONFIG || {};
 const USER_DOMAIN = CFG.usernameDomain || "movetrack.local";
 const DEFAULT_IDLE = typeof CFG.defaultIdleMinutes==="number" ? CFG.defaultIdleMinutes : 30;
 const RANKS = (CFG.ranks && CFG.ranks.length) ? CFG.ranks : [
-  {code:"Gen",name:"General",order:17},{code:"Lt Gen",name:"Lieutenant General",order:16},{code:"Maj Gen",name:"Major General",order:15},
-  {code:"Brig",name:"Brigadier",order:14},{code:"Col",name:"Colonel",order:13},{code:"Lt Col",name:"Lieutenant Colonel",order:12},
-  {code:"Maj",name:"Major",order:11},{code:"Capt",name:"Captain",order:10},{code:"Lt",name:"Lieutenant",order:9},{code:"2Lt",name:"Second Lieutenant",order:8},
-  {code:"WO1",name:"Warrant Officer Class 1",order:7},{code:"WO2",name:"Warrant Officer Class 2",order:6},{code:"SSgt",name:"Staff Sergeant",order:5},
-  {code:"Sgt",name:"Sergeant",order:4},{code:"Cpl",name:"Corporal",order:3},{code:"LCpl",name:"Lance Corporal",order:2},{code:"Pte",name:"Private",order:1},
-  {code:"CIV",name:"Civilian / Contractor",order:0}
+  {"grp": "Army", "code": "Gen", "name": "General", "order": 192},
+  {"grp": "Royal Navy", "code": "Adm", "name": "Admiral", "order": 193},
+  {"grp": "RAF", "code": "ACM", "name": "Air Chief Marshal", "order": 191},
+  {"grp": "Army", "code": "Lt Gen", "name": "Lieutenant General", "order": 182},
+  {"grp": "Royal Navy", "code": "V Adm", "name": "Vice Admiral", "order": 183},
+  {"grp": "RAF", "code": "AM", "name": "Air Marshal", "order": 181},
+  {"grp": "Army", "code": "Maj Gen", "name": "Major General", "order": 172},
+  {"grp": "Royal Navy", "code": "R Adm", "name": "Rear Admiral", "order": 173},
+  {"grp": "RAF", "code": "AVM", "name": "Air Vice-Marshal", "order": 171},
+  {"grp": "Army", "code": "Brig", "name": "Brigadier", "order": 162},
+  {"grp": "Royal Navy", "code": "Cdre", "name": "Commodore", "order": 163},
+  {"grp": "RAF", "code": "Air Cdre", "name": "Air Commodore", "order": 161},
+  {"grp": "Army", "code": "Col", "name": "Colonel", "order": 152},
+  {"grp": "Royal Navy", "code": "Capt RN", "name": "Captain (RN)", "order": 153},
+  {"grp": "RAF", "code": "Gp Capt", "name": "Group Captain", "order": 151},
+  {"grp": "Army", "code": "Lt Col", "name": "Lieutenant Colonel", "order": 142},
+  {"grp": "Royal Navy", "code": "Cdr", "name": "Commander", "order": 143},
+  {"grp": "RAF", "code": "Wg Cdr", "name": "Wing Commander", "order": 141},
+  {"grp": "Army", "code": "Maj", "name": "Major", "order": 132},
+  {"grp": "Royal Navy", "code": "Lt Cdr", "name": "Lieutenant Commander", "order": 133},
+  {"grp": "RAF", "code": "Sqn Ldr", "name": "Squadron Leader", "order": 131},
+  {"grp": "Army", "code": "Capt", "name": "Captain", "order": 122},
+  {"grp": "Royal Navy", "code": "Lt RN", "name": "Lieutenant (RN)", "order": 123},
+  {"grp": "RAF", "code": "Flt Lt", "name": "Flight Lieutenant", "order": 121},
+  {"grp": "Army", "code": "Lt", "name": "Lieutenant", "order": 112},
+  {"grp": "Royal Navy", "code": "Sub Lt", "name": "Sub Lieutenant", "order": 113},
+  {"grp": "RAF", "code": "Fg Off", "name": "Flying Officer", "order": 111},
+  {"grp": "Army", "code": "2Lt", "name": "Second Lieutenant", "order": 102},
+  {"grp": "Royal Navy", "code": "Mid", "name": "Midshipman", "order": 103},
+  {"grp": "RAF", "code": "Plt Off", "name": "Pilot Officer", "order": 101},
+  {"grp": "Army", "code": "WO1", "name": "Warrant Officer Class 1", "order": 92},
+  {"grp": "Royal Navy", "code": "WO1 RN", "name": "Warrant Officer 1 (RN)", "order": 93},
+  {"grp": "RAF", "code": "WO RAF", "name": "Warrant Officer (RAF)", "order": 91},
+  {"grp": "Army", "code": "WO2", "name": "Warrant Officer Class 2", "order": 82},
+  {"grp": "Royal Navy", "code": "WO2 RN", "name": "Warrant Officer 2 (RN)", "order": 83},
+  {"grp": "Army", "code": "SSgt", "name": "Staff / Colour Sergeant", "order": 72},
+  {"grp": "Royal Navy", "code": "CPO", "name": "Chief Petty Officer", "order": 73},
+  {"grp": "RAF", "code": "FS", "name": "Flight Sgt / Chief Technician", "order": 71},
+  {"grp": "Army", "code": "Sgt", "name": "Sergeant", "order": 62},
+  {"grp": "Royal Navy", "code": "PO", "name": "Petty Officer", "order": 63},
+  {"grp": "RAF", "code": "Sgt RAF", "name": "Sergeant (RAF)", "order": 61},
+  {"grp": "Army", "code": "Cpl", "name": "Corporal", "order": 52},
+  {"grp": "Royal Navy", "code": "LH", "name": "Leading Hand", "order": 53},
+  {"grp": "RAF", "code": "Cpl RAF", "name": "Corporal (RAF)", "order": 51},
+  {"grp": "Army", "code": "LCpl", "name": "Lance Corporal", "order": 42},
+  {"grp": "Army", "code": "Pte", "name": "Private", "order": 32},
+  {"grp": "Royal Navy", "code": "AB", "name": "Able Rate", "order": 33},
+  {"grp": "RAF", "code": "SAC", "name": "Senior Aircraftman", "order": 31},
+  {"grp": "RAF", "code": "LAC", "name": "Leading Aircraftman", "order": 21},
+  {"grp": "RAF", "code": "AC", "name": "Aircraftman", "order": 11},
+  {"grp": "Other", "code": "CIV", "name": "Civilian / Contractor", "order": 0}
 ];
 const PERM_DEFS = [
   ["vehicles","VEHICLES & FUEL CARDS"],
@@ -257,6 +302,17 @@ const downloadText = (name,text,mime) => {
 };
 const keyOf = n => String(n).replace(/[^a-zA-Z0-9]/g,"_").slice(0,48);
 const rankObj = code => RANKS.find(r=>r.code===code) || RANKS[RANKS.length-1];
+const RANK_GROUPS = ["Army","Royal Navy","RAF","Other"];
+function RankOptions(){
+  return RANK_GROUPS.map(g=>{ const l=RANKS.filter(r=>(r.grp||"Other")===g).sort((a,b)=>b.order-a.order); return l.length?<optgroup key={g} label={g}>{l.map(r=><option key={r.code} value={r.code}>{r.code} — {r.name}</option>)}</optgroup>:null; });
+}
+const iso3Of = ao => { if(!ao||!ao.country) return ""; if(ao.iso3) return ao.iso3; const c=((window.MT_GEO||{}).countries||[]).find(x=>x[0]===ao.country); return c&&c[6]||""; };
+const _bcache = {};
+const fetchBoundaries = (iso3,level) => {
+  const key=iso3+level; if(_bcache[key]) return Promise.resolve(_bcache[key]);
+  const url="https://media.githubusercontent.com/media/wmgeolab/geoBoundaries/main/releaseData/gbOpen/"+iso3+"/"+level+"/geoBoundaries-"+iso3+"-"+level+"_simplified.geojson";
+  return fetch(url).then(r=>{ if(!r.ok) throw new Error("no data"); return r.json(); }).then(j=>{ if(!j||!j.features||!j.features.length) throw new Error("empty"); _bcache[key]=j; return j; });
+};
 
 // Change audit (who changed what). Written by the app, readable by admins only.
 const auditNow = (area,target,field,from,to) => {
@@ -410,7 +466,7 @@ function AoPanel({ao,evacOpen}){
     if(!cobj) return setMsg({ok:false,t:"SELECT A COUNTRY"});
     if(!tz||!validTz(tz)) return setMsg({ok:false,t:"NO VALID TIME ZONE FOR THAT COUNTRY"});
     try{
-      await db.ref("settings/ao").set({country:cc,name:cobj[1],tz:tz,lat:cobj[2],lng:cobj[3],zoom:cobj[4]});
+      await db.ref("settings/ao").set({country:cc,iso3:cobj[6]||"",name:cobj[1],tz:tz,lat:cobj[2],lng:cobj[3],zoom:cobj[4]});
       auditNow("AO","AREA OF OPERATIONS","country",ao.name||"TBC",cobj[1]);
       let t = "AO SET TO "+cobj[1].toUpperCase();
       if(window.confirm("Replace the LOCATION list with "+cobj[1]+" and its "+regs.length+" regions?\n\n(Press Cancel to keep the existing list. You can do this later with the POPULATE button.)")){
@@ -446,7 +502,7 @@ function AoPanel({ao,evacOpen}){
         <button style={btnSt(A.blue)} disabled={!cobj} onClick={()=>{ if(window.confirm("Replace the LOCATION list with the regions of "+(cobj&&cobj[1])+"?")) populate().then(()=>setMsg({ok:true,t:"LOCATION LIST POPULATED"})); }}>POPULATE LOCATION LIST FROM REGIONS</button>
         <button style={btnSt(A.dim)} onClick={clearAo}>RESET TO TBC</button>
       </div>
-      <div style={{...labSt,marginTop:"20px"}}>EVAC PAC LIST EDITING</div>
+      <div style={{...labSt,marginTop:"20px"}}>EVAC PAX LIST EDITING</div>
       <label style={{display:"flex",alignItems:"center",gap:"8px",fontSize:"11px",letterSpacing:"1px",color:"#d4dde8",cursor:"pointer"}}>
         <input type="checkbox" checked={evacOpen} onChange={e=>setEvac(e.target.checked)}/> Everyone can edit the EVAC list (untick: only admins and people with the EVAC function)
       </label>
@@ -514,11 +570,11 @@ function CreateUser({me,onCreated}){
       <div style={{display:"flex",gap:"12px",flexWrap:"wrap"}}>
         <div style={{flex:"1 1 200px"}}><div style={labSt}>DISPLAY NAME (ON BOARD)</div><input style={inputSt} value={nm} onChange={e=>setNm(e.target.value)} maxLength={25} placeholder="e.g. SMITH"/></div>
         <div style={{flex:"1 1 200px"}}><div style={labSt}>RANK</div>
-          <select style={inputSt} value={rk} onChange={e=>setRk(e.target.value)}><option value="">— SELECT RANK —</option>{RANKS.map(r=><option key={r.code} value={r.code}>{r.code} — {r.name}</option>)}</select></div>
+          <select style={inputSt} value={rk} onChange={e=>setRk(e.target.value)}><option value="">— SELECT RANK —</option><RankOptions/></select></div>
       </div>
       <div style={{display:"flex",gap:"12px",flexWrap:"wrap"}}>
         <div style={{flex:"1 1 200px"}}><div style={labSt}>ACCESS LEVEL</div>
-          <select style={inputSt} value={role} onChange={e=>setRole(e.target.value)}>
+          <select style={inputSt} value={role} onChange={e=>{setRole(e.target.value); setOnBoard(e.target.value!=="admin");}}>
             <option value="user">USER — cannot see the Admin tab</option>
             <option value="admin">ADMIN — full access incl. Admin tab</option>
           </select></div>
@@ -631,7 +687,7 @@ function UserCard({uid,u,pres,online,self,me,activeAdmins,onIssued}){
       <div style={{display:"flex",gap:"10px",flexWrap:"wrap"}}>
         <div style={{flex:"1 1 160px"}}><div style={{...labSt,marginTop:0}}>DISPLAY NAME</div><input style={inputSt} value={name} maxLength={25} onChange={e=>setName(e.target.value)}/></div>
         <div style={{flex:"1 1 160px"}}><div style={{...labSt,marginTop:0}}>RANK</div>
-          <select style={inputSt} value={rank} onChange={e=>setRank(e.target.value)}>{RANKS.map(r=><option key={r.code} value={r.code}>{r.code} — {r.name}</option>)}</select></div>
+          <select style={inputSt} value={rank} onChange={e=>setRank(e.target.value)}><RankOptions/></select></div>
         <div style={{flex:"0 1 130px"}}><div style={{...labSt,marginTop:0}}>IDLE LOGOUT (MIN)</div><input style={inputSt} type="number" min="0" max="1440" value={idle} onChange={e=>setIdle(e.target.value)}/></div>
       </div>
       <div style={{display:"flex",flexWrap:"wrap",gap:"6px 16px",marginTop:"12px"}}>
@@ -956,6 +1012,8 @@ function App({user,profile,onLogout,onAccount}){
   const [rooms,setRooms] = useState({});
   const [fpNums,setFpNums] = useState({});
   const [evacData,setEvacData] = useState({});
+  const [restrictions,setRestrictions] = useState({});
+  const [nightHours,setNightHours] = useState("2000-0600");
   const [installable,setInstallable] = useState(!!window.deferredInstallPrompt);
   const [installed,setInstalled] = useState(false);
   const [wipeFlag,setWipeFlag] = useState(null); // admin only: "due" | "soon" | null
@@ -1009,10 +1067,11 @@ function App({user,profile,onLogout,onAccount}){
     on("rooms",snap=>{ setRooms(snap.val()||{}); });
     on("fpnumbers",snap=>{ setFpNums(snap.val()||{}); });
     on("evac",snap=>{ setEvacData(snap.val()||{}); });
+    on("restrictions",snap=>{ setRestrictions(snap.val()||{}); });
     on("settings",snap=>{
       const v=snap.val()||{}; const a=v.ao||{};
       AO.tz = a.tz||"UTC"; AO.set = !!a.country;
-      setAo(a); setEvacOpen(v.evacOpen!==false);
+      setAo(a); setEvacOpen(v.evacOpen!==false); setNightHours(v.nightHours||"2000-0600");
       setBhr(bhrNow());
     });
     return()=>{ clearInterval(clk); subs.forEach(([r,cb])=>r.off("value",cb)); };
@@ -1068,6 +1127,7 @@ function App({user,profile,onLogout,onAccount}){
   const writeRoom = (name,val) => { const k=name.replace(/[^a-zA-Z0-9]/g,"_"); if(!canRooms)return; audit("ROOMS",name,"room",rooms[k],val); db.ref("rooms/"+k).set(val); };
   const writeFP = (name,val) => { const k=name.replace(/[^a-zA-Z0-9]/g,"_"); if(!canFp)return; audit("FP NUMBERS",name,"fp number",fpNums[k],val); db.ref("fpnumbers/"+k).set(val); };
   const writeEvac = (vehIdx,field,val) => { if(!canEvac)return; const old=(evacData["v"+vehIdx]||{})[field]; audit("EVAC","VEH "+(vehIdx+1),field,old,val); const u={}; u[field]=val; db.ref("evac/v"+vehIdx).update(u); };
+  const setEvacCount = n => { if(!canEvac)return; const old=(evacData.meta||{}).count; audit("EVAC","VEHICLE COUNT","count",old||"10",String(n)); db.ref("evac/meta/count").set(String(n)); };
   const writeVehicle = (i,f,v) => { if(!canVeh)return; const cur=vehicles[i]||{}; audit("VEHICLES","VEH "+(i+1)+(cur.vrn?" "+cur.vrn:""),f,cur[f],v); const u={}; u[f]=v; db.ref("vehicles/"+i).update(u); };
   const writeFuelCard = (i,f,v) => { if(!canVeh)return; const cur=fuelCards[i]||{}; audit("FUEL CARDS","CARD "+(i+1)+(cur.cardnum?" "+cur.cardnum:""),f,cur[f],v); const u={}; u[f]=v; db.ref("fuelcards/"+i).update(u); };
 
@@ -1173,7 +1233,7 @@ function App({user,profile,onLogout,onAccount}){
   if(!connected) return (
     <div style={s.wrap}>
       <div style={s.header}>
-        <div><div style={s.title}>MOVING <span style={s.gold}>&</span> TRACKING</div><div style={s.sub}>BDL Status Board // Live Personnel Tracking</div></div>
+        <div><div style={s.title}>MOVING <span style={s.gold}>&</span> TRACKING</div><div style={s.sub}>Bed Down Location (BDL) Status Board // Live Personnel Tracking</div></div>
         <div style={s.cw}><div style={s.bhrC}>{bhr}</div><div style={s.bhrL}>{ao.name?ao.name.toUpperCase()+" LOCAL":"TBC LOCATION"}</div><div style={s.zulC}>ZULU: {zulu}</div></div>
       </div>
       <div style={s.conn}><div style={{width:"30px",height:"30px",border:"2px solid #1e2630",borderTopColor:"#c9a84c",borderRadius:"50%",animation:"spin .8s linear infinite",margin:"0 auto 16px"}}/>CONNECTING TO DATABASE...{dbErr&&<div style={{color:"#e74c3c",marginTop:"14px",fontSize:"11px",letterSpacing:"1px"}}>⚠ {dbErr}</div>}<div style={{marginTop:"16px"}}><button onClick={onLogout} style={{background:"transparent",border:"1px solid #1e2630",color:"#8a9aaa",fontFamily:f.mono,fontSize:"10px",letterSpacing:"2px",padding:"6px 12px",cursor:"pointer"}}>LOG OUT</button></div></div>
@@ -1183,7 +1243,7 @@ function App({user,profile,onLogout,onAccount}){
   return (
     <div style={s.wrap}>
       <div style={s.header}>
-        <div><div style={s.title}>MOVING <span style={s.gold}>&</span> TRACKING</div><div style={s.sub}>BDL Status Board // Live Personnel Tracking</div></div>
+        <div><div style={s.title}>MOVING <span style={s.gold}>&</span> TRACKING</div><div style={s.sub}>Bed Down Location (BDL) Status Board // Live Personnel Tracking</div></div>
         <div style={s.cw}>
           <div style={s.bhrC}>{bhr}</div><div style={s.bhrL}>{ao.name?ao.name.toUpperCase()+" LOCAL":"TBC LOCATION"}</div><div style={s.zulC}>ZULU: {zulu}</div>
           <div style={s.fill}>{filled} ON BOARD{odCount>0&&<span style={{color:"#e74c3c",marginLeft:"8px"}}>⚠ {odCount} OVERDUE</span>}</div>
@@ -1204,7 +1264,7 @@ function App({user,profile,onLogout,onAccount}){
         <button style={s.tab(tab==="install")} onClick={()=>setTab("install")}>📲 Install</button>
         <button style={s.tab(tab==="rooms")} onClick={()=>setTab("rooms")}>BDL Rooms</button>
         <button style={s.tab(tab==="fp")} onClick={()=>setTab("fp")}>FP Numbers</button>
-        <button style={s.tab(tab==="evac")} onClick={()=>setTab("evac")}>EVAC Pac List</button>
+        <button style={s.tab(tab==="evac")} onClick={()=>setTab("evac")}>EVAC Pax List</button>
         <button style={s.tab(tab==="map")} onClick={()=>setTab("map")}>🗺 AO Map</button>
       </div>
 
@@ -1223,7 +1283,7 @@ function App({user,profile,onLogout,onAccount}){
               <tbody>
                 {rows.length===0&&<tr><td colSpan={8} style={{...s.td,color:"#5a6a7a",letterSpacing:"1px",padding:"24px"}}>{isAdmin?"No personnel yet — create users in the Admin tab and they appear here, sorted by rank.":"No personnel on the board yet."}</td></tr>}
                 {rows.map((r,i)=>{
-                  const od=isOvd(r),dis=r.status==="IN"||r.status==="";
+                  const od=isOvd(r),dis=r.status==="IN";
                   const dl=r.dueBack?(r.dueDate?r.dueDate+" "+r.dueBack:r.dueBack):"— : —";
                   const mine=r.uid===myUid, canRow=mine||canEditOthers;
                   const lock={opacity:canRow?1:0.8,cursor:canRow?"pointer":"default"};
@@ -1483,11 +1543,11 @@ function App({user,profile,onLogout,onAccount}){
           {rows.filter(r=>r.name).length===0&&<div style={{color:"#5a6a7a",fontSize:"11px",letterSpacing:"1px",padding:"20px 0"}}>No personnel yet — the admin creates users in the Admin tab.</div>}
         </fieldset>}
 
-        {/* EVAC PAC LIST TAB */}
-        {tab==="evac"&&<fieldset disabled={!canEvac}>{!canEvac&&<div style={{marginBottom:"12px",padding:"8px 14px",border:"1px solid #1e2630",background:"#0d1117",color:"#8a9aaa",fontSize:"11px",letterSpacing:"1px"}}>👁 VIEW ONLY — EVAC editing is limited to admins and the EVAC (Force Protection) function.</div>}<EvacTab evacData={evacData} writeEvac={writeEvac} vehicles={vehicles} rows={rows} f={f} s={s}/></fieldset>}
+        {/* EVAC PAX LIST TAB */}
+        {tab==="evac"&&<fieldset disabled={!canEvac}>{!canEvac&&<div style={{marginBottom:"12px",padding:"8px 14px",border:"1px solid #1e2630",background:"#0d1117",color:"#8a9aaa",fontSize:"11px",letterSpacing:"1px"}}>👁 VIEW ONLY — EVAC editing is limited to admins and the EVAC (Force Protection) function.</div>}<EvacTab evacData={evacData} writeEvac={writeEvac} setEvacCount={setEvacCount} vehicles={vehicles} rows={rows} f={f} s={s}/></fieldset>}
 
         {/* AO MAP TAB */}
-        {tab==="map"&&<AOMap f={f} rows={rows} locs2={locs2} ao={ao} myUid={myUid} canEditOthers={canEditOthers} setPersonLocation={setPersonLocation}/>}
+        {tab==="map"&&<AOMap f={f} rows={rows} locs2={locs2} ao={ao} myUid={myUid} canEditOthers={canEditOthers} setPersonLocation={setPersonLocation} isAdmin={isAdmin} restrictions={restrictions} nightHours={nightHours}/>}
 
       </div>
 
@@ -1497,12 +1557,17 @@ function App({user,profile,onLogout,onAccount}){
   );
 }
 
-function AOMap({f,rows,locs2,ao,myUid,canEditOthers,setPersonLocation}){
+function AOMap({f,rows,locs2,ao,myUid,canEditOthers,setPersonLocation,isAdmin,restrictions,nightHours}){
   const mapRef = React.useRef(null);
   const mapInstanceRef = React.useRef(null);
   const districtLayersRef = React.useRef([]);
   const offLayersRef = React.useRef([]);
   const nightLayersRef = React.useRef([]);
+  const regionLayerRef = React.useRef(null);
+  const regionLayersRef = React.useRef({});
+  const circleLayersRef = React.useRef([]);
+  const previewRef = React.useRef(null);
+  const markerRef = React.useRef(null);
   const [selected,setSelected] = React.useState(null);
   const [status,setStatus] = React.useState("loading");
   const [districts,setDistricts] = React.useState([]);
@@ -1513,10 +1578,41 @@ function AOMap({f,rows,locs2,ao,myUid,canEditOthers,setPersonLocation}){
   const [results,setResults] = React.useState([]);
   const [searching,setSearching] = React.useState(false);
   const [searchErr,setSearchErr] = React.useState("");
-  const markerRef = React.useRef(null);
+  const [level,setLevel] = React.useState("ADM1");
+  const [geoState,setGeoState] = React.useState("idle"); // idle | loading | ok | none | error
+  const [names,setNames] = React.useState([]);
+  const [tileNote,setTileNote] = React.useState("");
+  const [draft,setDraft] = React.useState({name:"",type:"off",radius:"2",lat:null,lng:null});
+  const [placing,setPlacing] = React.useState(false);
+  const [adminMsg,setAdminMsg] = React.useState(null);
+  const [nh,setNh] = React.useState(nightHours);
   const fnt = f.mono;
+  const iso3 = iso3Of(ao);
   const regionList = ((window.MT_GEO&&window.MT_GEO.regions)||{})[ao.country]||[];
   const myRow = rows.find(r=>r.uid===myUid);
+
+  // refs so Leaflet's long-lived handlers always see the latest values
+  const placingRef = React.useRef(false); placingRef.current = placing;
+  const restrictionsRef = React.useRef(restrictions); restrictionsRef.current = restrictions;
+  const nhRef = React.useRef(nightHours); nhRef.current = nightHours;
+  const levelRef = React.useRef(level); levelRef.current = level;
+  const selectRef = React.useRef(null);
+
+  React.useEffect(()=>{ setNh(nightHours); },[nightHours]);
+
+  const DEF_STYLE   = {color:"#2ecc71",weight:1.5,fillColor:"#2ecc71",fillOpacity:0.08,opacity:0.7};
+  const SEL_STYLE   = {color:"#c9a84c",weight:3,fillColor:"#c9a84c",fillOpacity:0.4,opacity:1};
+  const HOV_STYLE   = {color:"#2ecc71",weight:2.5,fillColor:"#2ecc71",fillOpacity:0.25,opacity:1};
+  const OFF_STYLE   = {color:"#e74c3c",weight:2,fillColor:"#e74c3c",fillOpacity:0.4,opacity:1};
+  const NIGHT_STYLE = {color:"#f39c12",weight:2,fillColor:"#f39c12",fillOpacity:0.35,opacity:1};
+
+  const tipHtml = (name,type)=>{
+    const bg = type==="off"?"#e74c3c":(type==="night"?"#f39c12":"#0f1318");
+    const fg = type==="night"?"#000":"#fff";
+    const label = type==="off"?"🔴 OFF LIMITS":(type==="night"?"🟡 NIGHT RESTRICTION "+nhRef.current:"");
+    const esc = s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+    return '<div style="font-family:Share Tech Mono,monospace;color:'+fg+';background:'+bg+';padding:4px 8px;font-size:11px;font-weight:bold;border-radius:2px;border:1px solid #2ecc7155">'+(label?label+"<br>":"")+esc(name)+'</div>';
+  };
 
   const pickPlace = (name,lat,lng,zoom)=>{
     const map = mapInstanceRef.current;
@@ -1527,6 +1623,7 @@ function AOMap({f,rows,locs2,ao,myUid,canEditOthers,setPersonLocation}){
     }
     setLocPick({district:name});
   };
+
   const search = async ()=>{
     const term=q.trim(); if(term.length<2) return;
     setSearching(true); setSearchErr(""); setResults([]);
@@ -1540,19 +1637,16 @@ function AOMap({f,rows,locs2,ao,myUid,canEditOthers,setPersonLocation}){
     }catch(e){ setSearchErr("SEARCH FAILED — TRY AGAIN IN A MOMENT"); }
     setSearching(false);
   };
-  // re-centre when the admin changes the AO
-  React.useEffect(()=>{
-    if(mapInstanceRef.current&&ao.lat!=null) mapInstanceRef.current.setView([ao.lat,ao.lng],ao.zoom||6);
-  },[ao.country,ao.lat,ao.lng,ao.zoom]);
-
-  const DEF_STYLE   = {color:"#2ecc71",weight:1.5,fillColor:"#2ecc71",fillOpacity:0.08,opacity:0.7};
-  const SEL_STYLE   = {color:"#c9a84c",weight:3,fillColor:"#c9a84c",fillOpacity:0.4,opacity:1};
-  const HOV_STYLE   = {color:"#2ecc71",weight:2.5,fillColor:"#2ecc71",fillOpacity:0.25,opacity:1};
-  const OFF_STYLE   = {color:"#e74c3c",weight:2,fillColor:"#e74c3c",fillOpacity:0.4,opacity:1};
-  const NIGHT_STYLE = {color:"#f39c12",weight:2,fillColor:"#f39c12",fillOpacity:0.35,opacity:1};
+  const chooseResult = r => {
+    const lat=parseFloat(r.lat), lng=parseFloat(r.lon);
+    if(placingRef.current){
+      setDraft(d=>({...d,lat:lat,lng:lng,name:d.name||r.short}));
+      if(mapInstanceRef.current) mapInstanceRef.current.setView([lat,lng],11);
+    } else pickPlace(r.short,lat,lng,11);
+    setResults([]);
+  };
 
   const resetDistricts = ()=>districtLayersRef.current.forEach(({layer})=>layer.setStyle(DEF_STYLE));
-
   const selectDistrict = (name,layer,map)=>{
     resetDistricts();
     layer.setStyle(SEL_STYLE);
@@ -1561,7 +1655,45 @@ function AOMap({f,rows,locs2,ao,myUid,canEditOthers,setPersonLocation}){
     setLocPick({district:name});
     if(map){ try{ map.fitBounds(layer.getBounds(),{padding:[40,40],maxZoom:14}); }catch(e){} }
   };
+  const selectRegion = nm => {
+    setSelected(nm);
+    setLocPick({district:nm.toUpperCase().slice(0,40)});
+    const layer = regionLayersRef.current[nm];
+    if(layer&&mapInstanceRef.current){ try{ mapInstanceRef.current.fitBounds(layer.getBounds(),{padding:[40,40],maxZoom:12}); }catch(e){} }
+  };
+  selectRef.current = selectRegion;
 
+  // ---- admin: mark the selected region / custom circle as off-limits or night-restricted ----
+  const keyFor = nm => keyOf(level+"_"+nm);
+  const curType = selected ? ((restrictions[keyFor(selected)]||{}).type||"none") : "none";
+  const setRestriction = type => {
+    if(!isAdmin||!selected) return;
+    const key = keyFor(selected), old = curType;
+    const p = type==="none" ? db.ref("restrictions/"+key).remove() : db.ref("restrictions/"+key).set({type:type,name:selected.slice(0,60),level:level});
+    p.then(()=>{ auditNow("MAP",selected,"restriction",old,type); setAdminMsg({ok:true,t:selected.toUpperCase()+" → "+(type==="none"?"NO RESTRICTION":(type==="off"?"OFF LIMITS":"NIGHT RESTRICTED"))}); })
+     .catch(()=>setAdminMsg({ok:false,t:"COULD NOT SAVE"}));
+  };
+  const saveCircle = () => {
+    setAdminMsg(null);
+    const nm = draft.name.trim().toUpperCase().slice(0,60), rad = parseFloat(draft.radius);
+    if(!nm) return setAdminMsg({ok:false,t:"GIVE THE AREA A NAME"});
+    if(draft.lat==null) return setAdminMsg({ok:false,t:"TAP THE MAP (OR CHOOSE A SEARCH RESULT) TO PLACE THE CENTRE"});
+    if(!(rad>=0.1&&rad<=500)) return setAdminMsg({ok:false,t:"RADIUS MUST BE 0.1 – 500 KM"});
+    const key = keyOf("circle_"+nm);
+    db.ref("restrictions/"+key).set({type:draft.type,name:nm,level:"circle",lat:+draft.lat.toFixed(5),lng:+draft.lng.toFixed(5),radiusKm:rad})
+      .then(()=>{ auditNow("MAP",nm,"restriction (circle)","none",draft.type+" r="+rad+"km"); setAdminMsg({ok:true,t:"AREA SAVED"}); setDraft({name:"",type:"off",radius:"2",lat:null,lng:null}); setPlacing(false); })
+      .catch(()=>setAdminMsg({ok:false,t:"COULD NOT SAVE"}));
+  };
+  const removeRestriction = (key,r) => {
+    if(!window.confirm("Remove "+r.name+" ("+(r.type==="off"?"off limits":"night restricted")+")?")) return;
+    db.ref("restrictions/"+key).remove().then(()=>auditNow("MAP",r.name,"restriction",r.type,"none"));
+  };
+  const saveNight = () => {
+    const v=nh.trim().slice(0,20); if(!v) return;
+    db.ref("settings/nightHours").set(v).then(()=>{ auditNow("MAP","NIGHT HOURS","hours",nightHours,v); setAdminMsg({ok:true,t:"NIGHT HOURS SAVED"}); });
+  };
+
+  // ---- map creation (once) ----
   React.useEffect(()=>{
     if(!mapRef.current||mapInstanceRef.current) return;
     const map = L.map(mapRef.current,{
@@ -1570,11 +1702,18 @@ function AOMap({f,rows,locs2,ao,myUid,canEditOthers,setPersonLocation}){
     });
     mapInstanceRef.current = map;
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
-      maxZoom:19,subdomains:'abcd',attribution:'© OSM © CARTO'
-    }).addTo(map);
+    // Base map: CARTO dark; falls back to plain OpenStreetMap if CARTO is blocked on the network
+    const carto = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19,subdomains:'abcd',attribution:'© OSM © CARTO'}).addTo(map);
+    const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'});
+    let cLoaded=0,cErr=0,oLoaded=0,oErr=0,onOsm=false;
+    carto.on('tileload',()=>{ cLoaded++; });
+    carto.on('tileerror',()=>{ cErr++; if(!onOsm&&cLoaded===0&&cErr>=4){ onOsm=true; map.removeLayer(carto); osm.addTo(map); setTileNote("CARTO MAP TILES BLOCKED — SWITCHED TO OPENSTREETMAP"); } });
+    osm.on('tileload',()=>{ oLoaded++; setTileNote(n=>n.indexOf("BLOCKED ON THIS NETWORK")>=0?"":n); });
+    osm.on('tileerror',()=>{ oErr++; if(oLoaded===0&&oErr>=4) setTileNote("MAP PICTURE TILES ARE BLOCKED ON THIS NETWORK — REGION BORDERS AND LOCATIONS STILL WORK"); });
 
-    // Detect layer type by styleUrl — the only reliable field omnivore passes through
+    map.on('click',e=>{ if(placingRef.current) setDraft(d=>({...d,lat:e.latlng.lat,lng:e.latlng.lng})); });
+
+    // Optional KML overlay (map.kml). Layer type is read from the style colour used in the KML.
     const getLayerType = (feature)=>{
       const s = (feature.properties&&feature.properties.styleUrl)||"";
       if(s.includes("DB4436")) return "offlimits";
@@ -1582,78 +1721,116 @@ function AOMap({f,rows,locs2,ao,myUid,canEditOthers,setPersonLocation}){
       if(s.includes("00FFFF")||s.includes("93D7E8")) return "district";
       return "other";
     };
-
     omnivore.kml('./map.kml', null, L.geoJson(null,{
       pointToLayer: ()=>null,
-      filter: feature=>{
-        const t = feature.geometry&&feature.geometry.type||"";
-        return t==="Polygon"||t==="MultiPolygon";
-      },
-      style: feature=>{
-        const type = getLayerType(feature);
-        if(type==="offlimits") return OFF_STYLE;
-        if(type==="night") return NIGHT_STYLE;
-        return DEF_STYLE;
-      },
+      filter: feature=>{ const t = feature.geometry&&feature.geometry.type||""; return t==="Polygon"||t==="MultiPolygon"; },
+      style: feature=>{ const type = getLayerType(feature); if(type==="offlimits") return OFF_STYLE; if(type==="night") return NIGHT_STYLE; return DEF_STYLE; },
       onEachFeature:(feature,layer)=>{
         const type = getLayerType(feature);
         const name = (feature.properties&&(feature.properties.name||feature.properties.Name))||"";
         if(!name) return;
-
-        if(type==="offlimits"){
-          layer.setStyle(OFF_STYLE);
-          layer.bindTooltip('<div style="font-family:Share Tech Mono,monospace;color:#fff;background:#e74c3c;padding:4px 8px;font-size:11px;font-weight:bold;border-radius:2px">🔴 OFF LIMITS<br>'+name+'</div>',{sticky:true,opacity:1});
-          offLayersRef.current.push(layer);
-          return;
-        }
-        if(type==="night"){
-          layer.setStyle(NIGHT_STYLE);
-          layer.bindTooltip('<div style="font-family:Share Tech Mono,monospace;color:#000;background:#f39c12;padding:4px 8px;font-size:11px;font-weight:bold;border-radius:2px">🟡 NIGHT RESTRICTION<br>'+name+'<br>1900–0500</div>',{sticky:true,opacity:1});
-          nightLayersRef.current.push(layer);
-          return;
-        }
+        if(type==="offlimits"){ layer.setStyle(OFF_STYLE); layer.bindTooltip(tipHtml(name,"off"),{sticky:true,opacity:1}); offLayersRef.current.push(layer); return; }
+        if(type==="night"){ layer.setStyle(NIGHT_STYLE); layer.bindTooltip(tipHtml(name,"night"),{sticky:true,opacity:1}); nightLayersRef.current.push(layer); return; }
         if(type==="district"){
           layer.setStyle(DEF_STYLE);
-          layer.on('mouseover',()=>{ if(selected!==name) layer.setStyle(HOV_STYLE); });
-          layer.on('mouseout',()=>{ if(selected!==name) layer.setStyle(DEF_STYLE); });
+          layer.on('mouseover',()=>layer.setStyle(HOV_STYLE));
+          layer.on('mouseout',()=>layer.setStyle(DEF_STYLE));
           layer.on('click',()=>selectDistrict(name,layer,map));
           districtLayersRef.current.push({name,layer});
-
-          // Label
-          try{
-            const c=layer.getBounds().getCenter();
-            const icon=L.divIcon({
-              className:'',
-              html:'<div style="color:#ccc;font-family:Share Tech Mono,monospace;font-size:8px;text-shadow:0 0 3px #000,0 0 3px #000;white-space:nowrap;pointer-events:none;transform:translateX(-50%);letter-spacing:.5px">'+name+'</div>',
-              iconSize:[0,0],iconAnchor:[0,0],
-            });
-            L.marker(c,{icon,interactive:false}).addTo(map);
-          }catch(e){}
         }
       }
     }))
     .on('ready',function(){
-      // Off-limits on top
       offLayersRef.current.forEach(l=>l.addTo(map));
       nightLayersRef.current.forEach(l=>l.addTo(map));
-      const names=[...new Set(districtLayersRef.current.map(l=>l.name))].sort();
-      setDistricts(names);
+      const nm=[...new Set(districtLayersRef.current.map(l=>l.name))].sort();
+      setDistricts(nm);
       setStatus("ready");
-      try{ map.fitBounds(this.getBounds(),{padding:[10,10]}); }catch(e){}
+      if(nm.length||offLayersRef.current.length||nightLayersRef.current.length){ try{ map.fitBounds(this.getBounds(),{padding:[10,10]}); }catch(e){} }
     })
     .on('error',()=>setStatus("error"))
     .addTo(map);
 
-    return()=>{ if(mapInstanceRef.current){mapInstanceRef.current.remove();mapInstanceRef.current=null;districtLayersRef.current=[];offLayersRef.current=[];nightLayersRef.current=[];} };
+    return()=>{ if(mapInstanceRef.current){mapInstanceRef.current.remove();mapInstanceRef.current=null;districtLayersRef.current=[];offLayersRef.current=[];nightLayersRef.current=[];regionLayerRef.current=null;regionLayersRef.current={};circleLayersRef.current=[];} };
   },[]);
 
-  // Toggle off-limits
+  // re-centre when the admin changes the AO
+  React.useEffect(()=>{
+    if(mapInstanceRef.current&&ao.lat!=null) mapInstanceRef.current.setView([ao.lat,ao.lng],ao.zoom||6);
+  },[ao.country,ao.lat,ao.lng,ao.zoom]);
+
+  // ---- real region borders for the chosen country (free: geoBoundaries via GitHub, no key) ----
+  React.useEffect(()=>{
+    const map = mapInstanceRef.current; if(!map) return;
+    let dead=false;
+    if(regionLayerRef.current){ try{ regionLayerRef.current.remove(); }catch(e){} regionLayerRef.current=null; }
+    regionLayersRef.current={}; setNames([]); setSelected(null);
+    if(!iso3){ setGeoState("idle"); return; }
+    setGeoState("loading");
+    fetchBoundaries(iso3,level).then(gj=>{
+      if(dead||!mapInstanceRef.current) return;
+      const group = L.geoJSON(gj,{
+        style:()=>DEF_STYLE,
+        onEachFeature:(feat,layer)=>{
+          const nm = String((feat.properties&&(feat.properties.shapeName||feat.properties.name))||"").trim();
+          if(!nm) return;
+          regionLayersRef.current[nm]=layer;
+          layer.bindTooltip(()=>{ const r=restrictionsRef.current[keyOf(levelRef.current+"_"+nm)]; return tipHtml(nm,r&&r.type); },{sticky:true,opacity:1});
+          layer.on('mouseover',()=>{ if(!placingRef.current) layer.setStyle(HOV_STYLE); });
+          layer.on('mouseout',()=>{ applyStylesRef.current(); });
+          layer.on('click',()=>{ if(placingRef.current) return; selectRef.current(nm); });
+        }
+      }).addTo(map);
+      group.bringToBack();
+      regionLayerRef.current=group;
+      setNames(Object.keys(regionLayersRef.current).sort());
+      setGeoState("ok");
+      applyStylesRef.current();
+      try{ map.fitBounds(group.getBounds(),{padding:[20,20]}); }catch(e){}
+    }).catch(()=>{ if(!dead) setGeoState(level==="ADM1"?"error":"none"); });
+    return ()=>{ dead=true; };
+  },[iso3,level]);
+
+  // colour regions by restriction / selection
+  const applyStylesRef = React.useRef(()=>{});
+  const applyStyles = ()=>{
+    Object.entries(regionLayersRef.current).forEach(([nm,layer])=>{
+      const r = restrictions[keyOf(level+"_"+nm)];
+      let st = DEF_STYLE;
+      if(r&&r.type==="off"&&showOff) st=OFF_STYLE; else if(r&&r.type==="night"&&showNight) st=NIGHT_STYLE;
+      if(selected===nm) st=SEL_STYLE;
+      layer.setStyle(st);
+    });
+  };
+  applyStylesRef.current = applyStyles;
+  React.useEffect(()=>{ applyStyles(); },[restrictions,showOff,showNight,selected,geoState,level]);
+
+  // admin-drawn circular areas
+  React.useEffect(()=>{
+    const map = mapInstanceRef.current; if(!map) return;
+    circleLayersRef.current.forEach(l=>{ try{ l.remove(); }catch(e){} }); circleLayersRef.current=[];
+    Object.entries(restrictions).forEach(([k,r])=>{
+      if(!r||r.level!=="circle"||r.lat==null) return;
+      if(r.type==="off"&&!showOff) return; if(r.type==="night"&&!showNight) return;
+      const c = L.circle([r.lat,r.lng],{radius:(r.radiusKm||1)*1000,...(r.type==="off"?OFF_STYLE:NIGHT_STYLE)}).addTo(map);
+      c.bindTooltip(tipHtml(r.name,r.type),{sticky:true,opacity:1});
+      circleLayersRef.current.push(c);
+    });
+  },[restrictions,showOff,showNight,nightHours]);
+
+  // preview of the circle being placed
+  React.useEffect(()=>{
+    const map = mapInstanceRef.current; if(!map) return;
+    if(previewRef.current){ try{ previewRef.current.remove(); }catch(e){} previewRef.current=null; }
+    const rad=parseFloat(draft.radius);
+    if(draft.lat!=null&&rad>0) previewRef.current = L.circle([draft.lat,draft.lng],{radius:rad*1000,color:"#fff",weight:2,dashArray:"6 4",fillColor:draft.type==="off"?"#e74c3c":"#f39c12",fillOpacity:0.25}).addTo(map);
+  },[draft.lat,draft.lng,draft.radius,draft.type]);
+
+  // KML toggles
   React.useEffect(()=>{
     if(!mapInstanceRef.current) return;
     offLayersRef.current.forEach(l=>{ try{ showOff?l.addTo(mapInstanceRef.current):l.remove(); }catch(e){} });
   },[showOff]);
-
-  // Toggle night
   React.useEffect(()=>{
     if(!mapInstanceRef.current) return;
     nightLayersRef.current.forEach(l=>{ try{ showNight?l.addTo(mapInstanceRef.current):l.remove(); }catch(e){} });
@@ -1664,28 +1841,38 @@ function AOMap({f,rows,locs2,ao,myUid,canEditOthers,setPersonLocation}){
       {label}
     </button>
   );
-
+  const chipSt = (sel)=>({background:sel?"rgba(201,168,76,0.2)":"#0f1318",border:"1px solid "+(sel?"#c9a84c":"#2ecc7133"),color:sel?"#c9a84c":"#d4dde8",fontFamily:fnt,fontSize:"11px",letterSpacing:"1px",padding:"5px 10px",cursor:"pointer"});
+  const inSt = {background:"#080a0d",border:"1px solid #1e2630",color:"#fff",fontFamily:fnt,fontSize:"12px",padding:"7px 10px",outline:"none",letterSpacing:"1px"};
+  const smBtn = (c)=>({background:c+"1a",border:"1px solid "+c,color:c,fontFamily:fnt,fontSize:"10px",letterSpacing:"2px",padding:"7px 12px",cursor:"pointer"});
+  const restList = Object.entries(restrictions).filter(([k,r])=>r&&r.type).sort((a,b)=>String(a[1].name).localeCompare(String(b[1].name)));
 
   return (
     <div>
       <div style={{marginBottom:"10px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:"8px"}}>
         <div style={{fontSize:"11px",color:"#5a6a7a",letterSpacing:"1px",fontFamily:fnt}}>AO MAP — {ao.name?ao.name.toUpperCase():"TBC LOCATION"}</div>
-        {status==="loading"&&<div style={{color:"#c9a84c",fontFamily:fnt,fontSize:"10px",letterSpacing:"1px"}}>⟳ LOADING...</div>}
-        {status==="ready"&&<div style={{color:districts.length?"#2ecc71":"#5a6a7a",fontFamily:fnt,fontSize:"10px",letterSpacing:"1px"}}>{districts.length?"✓ "+districts.length+" KML DISTRICTS LOADED":"NO KML OVERLAY (OPTIONAL — EDIT map.kml)"}</div>}
-        {status==="error"&&<div style={{color:"#5a6a7a",fontFamily:fnt,fontSize:"10px",letterSpacing:"1px"}}>NO KML OVERLAY (OPTIONAL — EDIT map.kml)</div>}
+        <div style={{fontFamily:fnt,fontSize:"10px",letterSpacing:"1px"}}>
+          {!iso3&&<span style={{color:"#5a6a7a"}}>NO COUNTRY SET — ADMIN CHOOSES ONE IN THE ADMIN TAB</span>}
+          {iso3&&geoState==="loading"&&<span style={{color:"#c9a84c"}}>⟳ LOADING REGION BORDERS...</span>}
+          {iso3&&geoState==="ok"&&<span style={{color:"#2ecc71"}}>✓ {names.length} {level==="ADM1"?"REGIONS":"SUB-REGIONS"} LOADED</span>}
+          {iso3&&geoState==="none"&&<span style={{color:"#e67e22"}}>NO SUB-REGION DATA FOR THIS COUNTRY</span>}
+          {iso3&&geoState==="error"&&<span style={{color:"#e74c3c"}}>⚠ COULD NOT LOAD REGION BORDERS (NETWORK?) — REGION BUTTONS STILL WORK</span>}
+        </div>
       </div>
+      {tileNote&&<div style={{marginBottom:"8px",padding:"7px 12px",border:"1px solid #e67e22",background:"rgba(230,126,34,0.1)",color:"#e67e22",fontFamily:fnt,fontSize:"10px",letterSpacing:"1px"}}>⚠ {tileNote}</div>}
 
       {/* Layer toggles */}
-      <div style={{display:"flex",gap:"8px",marginBottom:"10px",flexWrap:"wrap"}}>
-        <span style={{fontSize:"9px",color:"#5a6a7a",letterSpacing:"2px",fontFamily:fnt,alignSelf:"center"}}>LAYERS:</span>
-        {toggleBtn(true,()=>{},"#2ecc71","🟢 DISTRICTS")}
+      <div style={{display:"flex",gap:"8px",marginBottom:"10px",flexWrap:"wrap",alignItems:"center"}}>
+        <span style={{fontSize:"9px",color:"#5a6a7a",letterSpacing:"2px",fontFamily:fnt}}>SHOW:</span>
         {toggleBtn(showOff,()=>setShowOff(v=>!v),"#e74c3c","🔴 OFF LIMITS")}
         {toggleBtn(showNight,()=>setShowNight(v=>!v),"#f39c12","🟡 NIGHT RESTRICTION")}
+        {iso3&&<>
+          <span style={{fontSize:"9px",color:"#5a6a7a",letterSpacing:"2px",fontFamily:fnt,marginLeft:"10px"}}>DETAIL:</span>
+          {toggleBtn(level==="ADM1",()=>setLevel("ADM1"),"#2ecc71","REGIONS")}
+          {toggleBtn(level==="ADM2",()=>setLevel("ADM2"),"#2ecc71","SUB-REGIONS (MORE DETAIL)")}
+        </>}
       </div>
-
-      {/* Legend */}
       <div style={{display:"flex",gap:"16px",marginBottom:"10px",flexWrap:"wrap"}}>
-        {[["#2ecc71","District boundaries (tap to select)"],["#e74c3c","Off-limits — avoid"],["#f39c12","Night restriction 1900–0500"]].map(([c,l])=>(
+        {[["#2ecc71","Region borders (tap to select)"],["#e74c3c","Off-limits — avoid"],["#f39c12","Night restriction "+nightHours]].map(([c,l])=>(
           <div key={l} style={{display:"flex",alignItems:"center",gap:"6px"}}>
             <div style={{width:"12px",height:"12px",background:c+"44",border:"2px solid "+c,flexShrink:0}}/>
             <span style={{fontSize:"10px",color:"#8a9aaa",fontFamily:fnt,letterSpacing:"1px"}}>{l}</span>
@@ -1693,36 +1880,14 @@ function AOMap({f,rows,locs2,ao,myUid,canEditOthers,setPersonLocation}){
         ))}
       </div>
 
-      {/* Region chips + place search (free: built-in region list + OpenStreetMap search) */}
-      {regionList.length>0&&(
-        <div style={{marginBottom:"10px"}}>
-          <div style={{fontSize:"10px",color:"#c9a84c",letterSpacing:"3px",marginBottom:"6px",fontFamily:fnt}}>REGIONS — TAP TO ZOOM IN & SET LOCATION</div>
-          <div style={{display:"flex",flexWrap:"wrap",gap:"6px",maxHeight:"130px",overflowY:"auto"}}>
-            {regionList.map(rg=>(
-              <button key={rg[0]} onClick={()=>pickPlace(rg[0].toUpperCase().slice(0,40),rg[1],rg[2],9)}
-                style={{background:locPick&&locPick.district===rg[0].toUpperCase().slice(0,40)?"rgba(201,168,76,0.2)":"#0f1318",border:"1px solid #2ecc7133",color:"#d4dde8",fontFamily:fnt,fontSize:"11px",letterSpacing:"1px",padding:"5px 10px",cursor:"pointer"}}>{rg[0]}</button>
-            ))}
-          </div>
-        </div>
-      )}
-      <div style={{display:"flex",gap:"8px",marginBottom:"10px",flexWrap:"wrap"}}>
-        <input value={q} onChange={e=>setQ(e.target.value)} onKeyDown={e=>e.key==="Enter"&&search()} placeholder={"SEARCH A PLACE"+(ao.name?" IN "+ao.name.toUpperCase():"")+"..."} maxLength={60}
-          style={{flex:"1 1 220px",background:"#0f1318",border:"1px solid #1e2630",color:"#fff",fontFamily:fnt,fontSize:"12px",padding:"8px 12px",outline:"none",letterSpacing:"1px"}}/>
-        <button onClick={search} style={{background:"rgba(201,168,76,0.1)",border:"1px solid #c9a84c",color:"#c9a84c",fontFamily:fnt,fontSize:"11px",letterSpacing:"2px",padding:"8px 14px",cursor:"pointer"}}>{searching?"...":"SEARCH"}</button>
-      </div>
-      {searchErr&&<div style={{color:"#e74c3c",fontFamily:fnt,fontSize:"10px",letterSpacing:"1px",marginBottom:"8px"}}>⚠ {searchErr}</div>}
-      {results.length>0&&<div style={{marginBottom:"10px",display:"flex",flexDirection:"column",gap:"4px"}}>
-        {results.map((r,i)=>(
-          <button key={i} onClick={()=>{pickPlace(r.short,parseFloat(r.lat),parseFloat(r.lon),11);setResults([]);}}
-            style={{textAlign:"left",background:"#0f1318",border:"1px solid #1e2630",color:"#d4dde8",fontFamily:fnt,fontSize:"11px",letterSpacing:"0.5px",padding:"6px 10px",cursor:"pointer"}}>{r.display_name}</button>
-        ))}
-      </div>}
-
-      {/* Selected place -> set location popup */}
+      {/* Selected place -> restrict (admin) / set location */}
       {locPick&&(
         <div style={{background:"rgba(201,168,76,0.08)",border:"1px solid #c9a84c",padding:"12px 16px",marginBottom:"10px"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"10px"}}>
-            <div style={{color:"#c9a84c",fontFamily:"'Barlow Condensed',sans-serif",fontWeight:"900",fontSize:"20px",letterSpacing:"3px"}}>{locPick.district}</div>
+            <div style={{color:"#c9a84c",fontFamily:"'Barlow Condensed',sans-serif",fontWeight:"900",fontSize:"20px",letterSpacing:"3px"}}>{locPick.district}
+              {selected&&curType==="off"&&<span style={{marginLeft:"10px",fontSize:"11px",color:"#e74c3c",fontFamily:fnt,letterSpacing:"2px"}}>🔴 OFF LIMITS</span>}
+              {selected&&curType==="night"&&<span style={{marginLeft:"10px",fontSize:"11px",color:"#f39c12",fontFamily:fnt,letterSpacing:"2px"}}>🟡 NIGHT RESTRICTED {nightHours}</span>}
+            </div>
             <button onClick={()=>{resetDistricts();setSelected(null);setLocPick(null);}} style={{background:"transparent",border:"none",color:"#5a6a7a",cursor:"pointer",fontSize:"18px"}}>✕</button>
           </div>
           <div style={{fontSize:"10px",color:"#5a6a7a",letterSpacing:"2px",marginBottom:"8px",fontFamily:fnt}}>SET AS LOCATION FOR:</div>
@@ -1738,29 +1903,98 @@ function AOMap({f,rows,locs2,ao,myUid,canEditOthers,setPersonLocation}){
             {!myRow&&!canEditOthers&&<div style={{fontSize:"10px",color:"#5a6a7a",fontFamily:fnt,letterSpacing:"1px"}}>You are not on the board, so there is no line to update.</div>}
           </div>
           <div style={{fontSize:"10px",color:"#5a6a7a",fontFamily:fnt,letterSpacing:"1px",marginTop:"8px"}}>→ updates the Location column on the board</div>
+          {isAdmin&&selected&&regionLayersRef.current[selected]&&<div style={{marginTop:"14px",paddingTop:"12px",borderTop:"1px solid #c9a84c44"}}>
+            <div style={{fontSize:"10px",color:"#c9a84c",letterSpacing:"2px",marginBottom:"8px",fontFamily:fnt}}>ADMIN — MARK THIS REGION:</div>
+            <div style={{display:"flex",gap:"8px",flexWrap:"wrap"}}>
+              <button style={smBtn("#e74c3c")} onClick={()=>setRestriction("off")}>🔴 OFF LIMITS</button>
+              <button style={smBtn("#f39c12")} onClick={()=>setRestriction("night")}>🟡 NIGHT RESTRICTED</button>
+              <button style={smBtn("#5a6a7a")} onClick={()=>setRestriction("none")}>CLEAR</button>
+            </div>
+          </div>}
         </div>
       )}
 
-      <div ref={mapRef} style={{height:"500px",border:"1px solid #1e2630",width:"100%",touchAction:"manipulation"}}/>
+      <div ref={mapRef} style={{height:"520px",border:"1px solid #1e2630",width:"100%",touchAction:"manipulation",background:"#0b1118",cursor:placing?"crosshair":""}}/>
+
+      {/* Search + regions */}
+      <div style={{display:"flex",gap:"8px",margin:"12px 0 10px",flexWrap:"wrap"}}>
+        <input value={q} onChange={e=>setQ(e.target.value)} onKeyDown={e=>e.key==="Enter"&&search()} placeholder={"SEARCH A PLACE"+(ao.name?" IN "+ao.name.toUpperCase():"")+"..."} maxLength={60}
+          style={{...inSt,flex:"1 1 220px"}}/>
+        <button onClick={search} style={{background:"rgba(201,168,76,0.1)",border:"1px solid #c9a84c",color:"#c9a84c",fontFamily:fnt,fontSize:"11px",letterSpacing:"2px",padding:"8px 14px",cursor:"pointer"}}>{searching?"...":"SEARCH"}</button>
+      </div>
+      {searchErr&&<div style={{color:"#e74c3c",fontFamily:fnt,fontSize:"10px",letterSpacing:"1px",marginBottom:"8px"}}>⚠ {searchErr}</div>}
+      {results.length>0&&<div style={{marginBottom:"10px",display:"flex",flexDirection:"column",gap:"4px"}}>
+        {results.map((r,i)=>(
+          <button key={i} onClick={()=>chooseResult(r)}
+            style={{textAlign:"left",background:"#0f1318",border:"1px solid #1e2630",color:"#d4dde8",fontFamily:fnt,fontSize:"11px",letterSpacing:"0.5px",padding:"6px 10px",cursor:"pointer"}}>{r.display_name}</button>
+        ))}
+      </div>}
+
+      {(names.length>0||regionList.length>0)&&(
+        <div style={{marginBottom:"12px"}}>
+          <div style={{fontSize:"10px",color:"#c9a84c",letterSpacing:"3px",marginBottom:"6px",fontFamily:fnt}}>{names.length>0?(level==="ADM1"?"REGIONS":"SUB-REGIONS")+" — TAP TO ZOOM IN & SET LOCATION":"REGIONS — TAP TO ZOOM IN & SET LOCATION"}</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:"6px",maxHeight:"170px",overflowY:"auto"}}>
+            {names.length>0
+              ? names.map(nm=>{ const r=restrictions[keyFor(nm)]; return <button key={nm} onClick={()=>selectRegion(nm)} style={{...chipSt(selected===nm),borderColor:selected===nm?"#c9a84c":(r&&r.type==="off"?"#e74c3c":(r&&r.type==="night"?"#f39c12":"#2ecc7133"))}}>{r&&r.type==="off"?"🔴 ":(r&&r.type==="night"?"🟡 ":"")}{nm}</button>; })
+              : regionList.map(rg=>(
+                <button key={rg[0]} onClick={()=>pickPlace(rg[0].toUpperCase().slice(0,40),rg[1],rg[2],9)} style={chipSt(locPick&&locPick.district===rg[0].toUpperCase().slice(0,40))}>{rg[0]}</button>
+              ))}
+          </div>
+        </div>
+      )}
 
       {districts.length>0&&(
-        <div style={{marginTop:"12px"}}>
-          <div style={{fontSize:"10px",color:"#c9a84c",letterSpacing:"3px",marginBottom:"8px",fontFamily:fnt}}>DISTRICTS — TAP TO SELECT & SET LOCATION</div>
+        <div style={{marginBottom:"12px"}}>
+          <div style={{fontSize:"10px",color:"#c9a84c",letterSpacing:"3px",marginBottom:"8px",fontFamily:fnt}}>KML DISTRICTS — TAP TO SELECT & SET LOCATION</div>
           <div style={{display:"flex",flexWrap:"wrap",gap:"6px"}}>
-            {districts.map(name=>{
-              const isSel=selected===name;
-              return(
-                <button key={name}
-                  onClick={()=>{
-                    const found=districtLayersRef.current.find(l=>l.name===name);
-                    if(found&&mapInstanceRef.current) selectDistrict(name,found.layer,mapInstanceRef.current);
-                  }}
-                  style={{background:isSel?"rgba(201,168,76,0.2)":"#0f1318",border:"1px solid "+(isSel?"#c9a84c":"#2ecc7133"),color:isSel?"#c9a84c":"#d4dde8",fontFamily:fnt,fontSize:"11px",letterSpacing:"1px",padding:"5px 10px",cursor:"pointer"}}>
-                  {name}
-                </button>
-              );
-            })}
+            {districts.map(name=>(
+              <button key={name}
+                onClick={()=>{ const found=districtLayersRef.current.find(l=>l.name===name); if(found&&mapInstanceRef.current) selectDistrict(name,found.layer,mapInstanceRef.current); }}
+                style={chipSt(selected===name)}>{name}</button>
+            ))}
           </div>
+        </div>
+      )}
+
+      {/* ADMIN: custom areas, list of restrictions, night hours */}
+      {isAdmin&&(
+        <div style={{marginTop:"16px",background:"#0d1117",border:"1px solid #1e2630",padding:"14px 16px"}}>
+          <div style={{fontSize:"11px",color:"#c9a84c",letterSpacing:"3px",marginBottom:"4px",fontFamily:fnt}}>ADMIN — OFF-LIMITS & NIGHT-RESTRICTED AREAS</div>
+          <div style={{fontSize:"10px",color:"#5a6a7a",letterSpacing:"1px",marginBottom:"12px",lineHeight:"1.6",fontFamily:fnt}}>Whole regions: tap a region on the map (or its button) and use the red / yellow buttons. Smaller areas: draw a circle below. Everyone sees the result.</div>
+
+          <div style={{fontSize:"10px",color:"#5a6a7a",letterSpacing:"2px",marginBottom:"6px",fontFamily:fnt}}>NIGHT RESTRICTION HOURS</div>
+          <div style={{display:"flex",gap:"8px",marginBottom:"16px",flexWrap:"wrap"}}>
+            <input value={nh} onChange={e=>setNh(e.target.value)} maxLength={20} style={{...inSt,width:"160px"}}/>
+            <button style={smBtn("#c9a84c")} onClick={saveNight}>SAVE HOURS</button>
+          </div>
+
+          <div style={{fontSize:"10px",color:"#5a6a7a",letterSpacing:"2px",marginBottom:"6px",fontFamily:fnt}}>DRAW A CIRCULAR AREA</div>
+          <div style={{display:"flex",gap:"8px",flexWrap:"wrap",alignItems:"center",marginBottom:"8px"}}>
+            <input value={draft.name} onChange={e=>setDraft(d=>({...d,name:e.target.value}))} maxLength={40} placeholder="AREA NAME" style={{...inSt,flex:"1 1 160px"}}/>
+            <select value={draft.type} onChange={e=>setDraft(d=>({...d,type:e.target.value}))} style={{...inSt,appearance:"none",WebkitAppearance:"none",cursor:"pointer"}}>
+              <option value="off">🔴 OFF LIMITS</option><option value="night">🟡 NIGHT RESTRICTED</option>
+            </select>
+            <input type="number" min="0.1" max="500" step="0.5" value={draft.radius} onChange={e=>setDraft(d=>({...d,radius:e.target.value}))} style={{...inSt,width:"90px"}}/>
+            <span style={{fontSize:"10px",color:"#5a6a7a",fontFamily:fnt}}>KM RADIUS</span>
+          </div>
+          <div style={{display:"flex",gap:"8px",flexWrap:"wrap",alignItems:"center"}}>
+            <button style={smBtn(placing?"#2ecc71":"#3498db")} onClick={()=>setPlacing(p=>!p)}>{placing?"✔ TAP THE MAP NOW — CLICK TO STOP":"📍 PLACE CENTRE ON MAP"}</button>
+            <button style={smBtn("#c9a84c")} onClick={saveCircle}>SAVE AREA</button>
+            {draft.lat!=null&&<span style={{fontSize:"10px",color:"#8a9aaa",fontFamily:fnt}}>CENTRE {draft.lat.toFixed(4)}, {draft.lng.toFixed(4)}</span>}
+          </div>
+          <div style={{fontSize:"10px",color:"#5a6a7a",letterSpacing:"1px",marginTop:"6px",fontFamily:fnt}}>Tip: while placing, a place-search result also sets the centre.</div>
+          {adminMsg&&<div style={{marginTop:"10px",fontSize:"11px",letterSpacing:"1px",fontFamily:fnt,color:adminMsg.ok?"#2ecc71":"#e74c3c"}}>{adminMsg.ok?"✔ ":"⚠ "}{adminMsg.t}</div>}
+
+          <div style={{fontSize:"10px",color:"#5a6a7a",letterSpacing:"2px",margin:"18px 0 6px",fontFamily:fnt}}>CURRENT RESTRICTIONS ({restList.length})</div>
+          {restList.length===0&&<div style={{fontSize:"11px",color:"#5a6a7a",fontFamily:fnt}}>None set.</div>}
+          {restList.map(([k,r])=>(
+            <div key={k} style={{display:"flex",alignItems:"center",gap:"10px",padding:"5px 0",borderBottom:"1px solid #1e263088",fontFamily:fnt,fontSize:"11px",letterSpacing:"1px",flexWrap:"wrap"}}>
+              <span style={{color:r.type==="off"?"#e74c3c":"#f39c12",minWidth:"120px"}}>{r.type==="off"?"🔴 OFF LIMITS":"🟡 NIGHT"}</span>
+              <span style={{color:"#fff",flex:"1 1 160px"}}>{r.name}</span>
+              <span style={{color:"#5a6a7a"}}>{r.level==="circle"?"CIRCLE "+r.radiusKm+" KM":(r.level==="ADM2"?"SUB-REGION":"REGION")}</span>
+              <button style={{...smBtn("#e74c3c"),padding:"3px 8px"}} onClick={()=>removeRestriction(k,r)}>REMOVE</button>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -1769,20 +2003,18 @@ function AOMap({f,rows,locs2,ao,myUid,canEditOthers,setPersonLocation}){
 
 function EvacCard({vi,evacData,writeEvac,vehList,nameList,f}){
   const vd = evacData["v"+vi]||{};
-  const [paxCount,setPaxCount] = React.useState(parseInt(vd.paxCount)||0);
+  const paxCount = parseInt(vd.paxCount)||0;
 
-  const selV = (val)=>({appearance:"none",WebkitAppearance:"none",background:"#080a0d",border:"1px solid "+(val?"#c9a84c55":"#1e2630"),color:val?"#c9a84c":"#5a6a7a",fontFamily:f.mono,fontSize:"11px",padding:"5px 7px",cursor:"pointer",outline:"none",width:"100%",minWidth:"140px",borderRadius:"0"});
-  const selN = (val)=>({appearance:"none",WebkitAppearance:"none",background:"#080a0d",border:"1px solid "+(val?"#2ecc7155":"#1e2630"),color:val?"#2ecc71":"#5a6a7a",fontFamily:f.mono,fontSize:"11px",padding:"5px 7px",cursor:"pointer",outline:"none",width:"100%",minWidth:"140px",borderRadius:"0"});
+  const selV = (val)=>({appearance:"none",WebkitAppearance:"none",background:"#080a0d",border:"1px solid "+(val?"#c9a84c55":"#1e2630"),color:val?"#c9a84c":"#5a6a7a",fontFamily:f.mono,fontSize:"11px",padding:"5px 7px",cursor:"pointer",outline:"none",width:"100%",maxWidth:"320px",borderRadius:"0"});
+  const selN = (val)=>({appearance:"none",WebkitAppearance:"none",background:"#080a0d",border:"1px solid "+(val?"#2ecc7155":"#1e2630"),color:val?"#2ecc71":"#5a6a7a",fontFamily:f.mono,fontSize:"11px",padding:"5px 7px",cursor:"pointer",outline:"none",width:"100%",maxWidth:"320px",borderRadius:"0"});
   const selP = (val)=>({appearance:"none",WebkitAppearance:"none",background:"#080a0d",border:"1px solid "+(val?"#3498db55":"#1e2630"),color:val?"#3498db":"#5a6a7a",fontFamily:f.mono,fontSize:"11px",padding:"5px 7px",cursor:"pointer",outline:"none",width:"80px",borderRadius:"0"});
   const lbl = {fontSize:"9px",color:"#5a6a7a",letterSpacing:"2px",minWidth:"65px",flexShrink:0,fontFamily:f.mono};
   const row = {display:"flex",gap:"8px",marginBottom:"10px",alignItems:"center",flexWrap:"wrap"};
 
   const handlePaxCount = (e)=>{
     const n=parseInt(e.target.value)||0;
-    setPaxCount(n);
     writeEvac(vi,"paxCount",String(n));
-    // Clear pax slots beyond new count
-    for(let i=n+1;i<=6;i++) writeEvac(vi,"pax"+i,"");
+    for(let i=n+1;i<=12;i++) if(vd["pax"+i]) writeEvac(vi,"pax"+i,"");   // clear seats that no longer exist
   };
 
   const totalOnBoard = 1 + paxCount; // driver + pax
@@ -1800,6 +2032,7 @@ function EvacCard({vi,evacData,writeEvac,vehList,nameList,f}){
         <select value={vd.vehicle||""} onChange={e=>writeEvac(vi,"vehicle",e.target.value)} style={selV(vd.vehicle)}>
           <option value="">— SELECT VEHICLE —</option>
           {vehList.map(v=><option key={v} value={v}>{v}</option>)}
+          {vd.vehicle&&!vehList.includes(vd.vehicle)&&<option value={vd.vehicle}>{vd.vehicle}</option>}
         </select>
       </div>
 
@@ -1808,6 +2041,7 @@ function EvacCard({vi,evacData,writeEvac,vehList,nameList,f}){
         <select value={vd.driver||""} onChange={e=>writeEvac(vi,"driver",e.target.value)} style={selN(vd.driver)}>
           <option value="">— SELECT DRIVER —</option>
           {nameList.map(n=><option key={n} value={n}>{n}</option>)}
+          {vd.driver&&!nameList.includes(vd.driver)&&<option value={vd.driver}>{vd.driver}</option>}
         </select>
       </div>
 
@@ -1815,7 +2049,7 @@ function EvacCard({vi,evacData,writeEvac,vehList,nameList,f}){
         <span style={lbl}>PAX COUNT</span>
         <select value={String(paxCount)} onChange={handlePaxCount} style={selP(paxCount>0)}>
           <option value="0">0</option>
-          {[1,2,3,4,5,6].map(n=><option key={n} value={String(n)}>{n}</option>)}
+          {Array.from({length:12},(_,i)=>i+1).map(n=><option key={n} value={String(n)}>{n}</option>)}
         </select>
         <span style={{fontSize:"10px",color:"#5a6a7a",fontFamily:f.mono,letterSpacing:"1px"}}>PAX SEATS</span>
       </div>
@@ -1827,6 +2061,7 @@ function EvacCard({vi,evacData,writeEvac,vehList,nameList,f}){
             <select key={si+1} value={vd["pax"+(si+1)]||""} onChange={e=>writeEvac(vi,"pax"+(si+1),e.target.value)} style={{...selN(vd["pax"+(si+1)]),minWidth:"130px",flex:"1"}}>
               <option value="">— PAX {si+1} —</option>
               {nameList.map(n=><option key={n} value={n}>{n}</option>)}
+              {vd["pax"+(si+1)]&&!nameList.includes(vd["pax"+(si+1)])&&<option value={vd["pax"+(si+1)]}>{vd["pax"+(si+1)]}</option>}
             </select>
           ))}
         </div>
@@ -1835,19 +2070,28 @@ function EvacCard({vi,evacData,writeEvac,vehList,nameList,f}){
   );
 }
 
-function EvacTab({evacData,writeEvac,vehicles,rows,f,s}){
+function EvacTab({evacData,writeEvac,setEvacCount,vehicles,rows,f,s}){
   const vehList=vehicles.filter(v=>v.vrn).map(v=>v.vrn+(v.make?" "+v.make:"")+(v.model?" "+v.model:""));
   const nameList=rows.filter(r=>r.name).map(r=>r.name);
-  const totalOnBoard=Array.from({length:10},(_,vi)=>{
-    const vd=evacData["v"+vi]||{};
-    return 1+(parseInt(vd.paxCount)||0);
-  }).filter((_,vi)=>(evacData["v"+vi]||{}).vehicle).reduce((a,b)=>a+b,0);
+  const meta = evacData.meta||{};
+  const count = Math.max(1,Math.min(100,parseInt(meta.count)||10));
+  const idx = Array.from({length:count},(_,i)=>i);
+  const used = idx.filter(vi=>(evacData["v"+vi]||{}).vehicle);
+  const totalOnBoard = used.reduce((a,vi)=>a+1+(parseInt((evacData["v"+vi]||{}).paxCount)||0),0);
+  const stepBtn = {background:"#080a0d",border:"1px solid #c9a84c55",color:"#c9a84c",fontFamily:f.mono,fontSize:"16px",width:"34px",height:"34px",cursor:"pointer"};
   return <>
-    <div style={{...s.hint,marginBottom:"6px"}}>EVAC VEHICLE PAC LIST — 10 VEHICLES</div>
+    <div style={{...s.hint,marginBottom:"10px"}}>EVAC VEHICLE PAX LIST — {count} VEHICLE{count===1?"":"S"}</div>
+    <div style={{display:"flex",alignItems:"center",gap:"10px",marginBottom:"14px",flexWrap:"wrap"}}>
+      <span style={{fontSize:"10px",color:"#5a6a7a",letterSpacing:"2px",fontFamily:f.mono}}>NUMBER OF VEHICLES</span>
+      <button style={stepBtn} onClick={()=>setEvacCount(Math.max(1,count-1))}>−</button>
+      <span style={{fontFamily:f.sans,fontWeight:"900",fontSize:"22px",color:"#fff",minWidth:"34px",textAlign:"center"}}>{count}</span>
+      <button style={stepBtn} onClick={()=>setEvacCount(Math.min(100,count+1))}>+</button>
+      <span style={{fontSize:"10px",color:"#5a6a7a",letterSpacing:"1px",fontFamily:f.mono}}>(1–100 · hidden vehicles keep their details)</span>
+    </div>
     {totalOnBoard>0&&<div style={{background:"rgba(52,152,219,0.08)",border:"1px solid rgba(52,152,219,0.3)",padding:"8px 14px",marginBottom:"14px",fontSize:"11px",color:"#3498db",fontFamily:f.mono,letterSpacing:"1px"}}>
-      TOTAL ON BOARD: {totalOnBoard} PERSONNEL ACROSS {Array.from({length:10}).filter((_,vi)=>(evacData["v"+vi]||{}).vehicle).length} VEHICLES
+      TOTAL ON BOARD: {totalOnBoard} PERSONNEL ACROSS {used.length} VEHICLE{used.length===1?"":"S"}
     </div>}
-    {Array.from({length:10},(_,vi)=>(
+    {idx.map(vi=>(
       <EvacCard key={vi} vi={vi} evacData={evacData} writeEvac={writeEvac} vehList={vehList} nameList={nameList} f={f}/>
     ))}
   </>;
