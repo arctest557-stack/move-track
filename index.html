@@ -541,8 +541,8 @@ function CreateUser({me,onCreated}){
       const r = rankObj(rk);
       const pm = {}; PERM_DEFS.forEach(([k])=>{ pm[k]=!!perms[k]; });
       const ups = {};
-      ups["users/"+uid] = {username:uname,role:role,disabled:false,name:name,rank:r.code,rankOrder:r.order,onBoard:onBoard,perms:pm,idleMin:idleN,createdAt:SV(),createdBy:me.uid};
-      ups["roster/"+uid] = {name:name,rank:r.code,rankOrder:r.order,onBoard:onBoard};
+      ups["users/"+uid] = {username:uname,role:role,disabled:false,name:name,rank:r.code,rankOrder:r.order,onBoard:role==="admin"?false:onBoard,perms:pm,idleMin:idleN,createdAt:SV(),createdBy:me.uid};
+      ups["roster/"+uid] = {name:name,rank:r.code,rankOrder:r.order,onBoard:role==="admin"?false:onBoard};
       await db.ref().update(ups);
       auditNow("ADMIN","USER "+uname,"created","",role.toUpperCase()+" / "+r.code+" "+name);
       setMade({u:uname,p:np});
@@ -590,9 +590,10 @@ function CreateUser({me,onCreated}){
           </label>
         ))}
       </div>
-      <label style={{display:"flex",alignItems:"center",gap:"6px",marginTop:"12px",fontSize:"11px",letterSpacing:"1px",color:"#d4dde8",cursor:"pointer"}}>
+      {role==="admin"?<div style={{marginTop:"12px",fontSize:"11px",letterSpacing:"1px",color:A.orange,lineHeight:"1.6"}}>ℹ ADMIN ACCOUNTS ARE NEVER SHOWN ON THE BOARD. IF THIS PERSON NEEDS A BOARD LINE, CREATE A SEPARATE NORMAL USER ACCOUNT FOR THEM AND USE THIS ADMIN ACCOUNT ONLY FOR ADMIN WORK.</div>:null}
+      {role!=="admin"&&<label style={{display:"flex",alignItems:"center",gap:"6px",marginTop:"12px",fontSize:"11px",letterSpacing:"1px",color:"#d4dde8",cursor:"pointer"}}>
         <input type="checkbox" checked={onBoard} onChange={e=>setOnBoard(e.target.checked)}/> SHOW THIS PERSON ON THE BOARD
-      </label>
+      </label>}
       {msg&&<div style={{marginTop:"12px",fontSize:"11px",letterSpacing:"1px",color:msg.ok?A.green:A.red}}>{msg.ok?"✔ ":"⚠ "}{msg.t}</div>}
       <button onClick={create} disabled={busy} style={{...btnSt(),marginTop:"16px",opacity:busy?0.5:1}}>{busy?"CREATING...":"CREATE USER"}</button>
     </div>
@@ -624,8 +625,8 @@ function UserCard({uid,u,pres,online,self,me,activeAdmins,onIssued}){
     const r = rankObj(rank), pm = {}; PERM_DEFS.forEach(([k])=>{ pm[k]=!!perms[k]; });
     const ups = {};
     ups["users/"+uid+"/name"]=nm; ups["users/"+uid+"/rank"]=r.code; ups["users/"+uid+"/rankOrder"]=r.order;
-    ups["users/"+uid+"/onBoard"]=onBoard; ups["users/"+uid+"/perms"]=pm; ups["users/"+uid+"/idleMin"]=idleN;
-    ups["roster/"+uid]={name:nm,rank:r.code,rankOrder:r.order,onBoard:onBoard};
+    ups["users/"+uid+"/onBoard"]=u.role==="admin"?false:onBoard; ups["users/"+uid+"/perms"]=pm; ups["users/"+uid+"/idleMin"]=idleN;
+    ups["roster/"+uid]={name:nm,rank:r.code,rankOrder:r.order,onBoard:u.role==="admin"?false:onBoard};
     try{
       await db.ref().update(ups);
       const was = [u.rank,u.name,JSON.stringify(u.perms||{}),u.idleMin,u.onBoard].join(" | ");
@@ -649,7 +650,9 @@ function UserCard({uid,u,pres,online,self,me,activeAdmins,onIssued}){
     const to = u.role==="admin"?"user":"admin";
     if(to==="user" && activeAdmins<=1) return window.alert("You cannot demote the only admin. Create a second admin first.");
     if(!window.confirm("Change "+u.username+" to "+to.toUpperCase()+"?")) return;
-    db.ref("users/"+uid+"/role").set(to);
+    const ru={}; ru["users/"+uid+"/role"]=to;
+    if(to==="admin"){ ru["users/"+uid+"/onBoard"]=false; ru["roster/"+uid+"/onBoard"]=false; }
+    db.ref().update(ru);
     auditNow("ADMIN","USER "+u.username,"role",u.role,to);
   };
   const openReset = () => {
@@ -704,9 +707,11 @@ function UserCard({uid,u,pres,online,self,me,activeAdmins,onIssued}){
             <input type="checkbox" checked={!!perms[k]} onChange={e=>setPerms(p=>({...p,[k]:e.target.checked}))}/> {l}
           </label>
         ))}
-        <label style={{display:"flex",alignItems:"center",gap:"5px",fontSize:"10px",letterSpacing:"1px",color:"#d4dde8",cursor:"pointer"}}>
+        {u.role==="admin"
+          ?<span style={{fontSize:"10px",letterSpacing:"1px",color:A.orange}}>ADMIN ACCOUNT — NEVER SHOWN ON THE BOARD</span>
+          :<label style={{display:"flex",alignItems:"center",gap:"5px",fontSize:"10px",letterSpacing:"1px",color:"#d4dde8",cursor:"pointer"}}>
           <input type="checkbox" checked={onBoard} onChange={e=>setOnBoard(e.target.checked)}/> SHOWN ON BOARD
-        </label>
+        </label>}
       </div>
       <div style={{marginTop:"12px"}}>
         {dirty&&<button style={smallBtn(A.green)} onClick={save}>SAVE CHANGES</button>}
@@ -877,6 +882,12 @@ function AdminTab({me,ao,evacOpen}){
     const t=setInterval(()=>setTick(x=>x+1),15000);
     return ()=>{ r1.off("value",c1); r2.off("value",c2); r4.off("value",c4); clearInterval(t); };
   },[]);
+  // Admin accounts are never on the Board: quietly take any existing admin off it
+  useEffect(()=>{
+    const ups={};
+    Object.entries(users).forEach(([k,v])=>{ if(v&&v.role==="admin"&&v.username&&!v.replacedBy&&v.onBoard!==false){ ups["users/"+k+"/onBoard"]=false; ups["roster/"+k+"/onBoard"]=false; } });
+    if(Object.keys(ups).length) db.ref().update(ups).catch(()=>{});
+  },[users]);
   const nowS = Date.now()+skew; void tick;
   const isOnline = pr => !!(pr && pr.online===true && pr.lastSeen && (nowS-pr.lastSeen)<150000);
   const list = Object.entries(users).filter(([k,v])=>v&&v.username&&!v.replacedBy).sort((a,b)=>(b[1].rankOrder||0)-(a[1].rankOrder||0)||a[1].username.localeCompare(b[1].username));
