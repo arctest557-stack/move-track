@@ -54,6 +54,7 @@ fieldset:disabled input,fieldset:disabled select{opacity:.75}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes rp{0%,100%{background:rgba(231,76,60,0.07)}50%{background:rgba(231,76,60,0.13)}}
 @keyframes alertpulse{0%,100%{box-shadow:0 0 0 0 rgba(231,76,60,0.2)}50%{box-shadow:0 0 8px 2px rgba(231,76,60,0.15)}}
+.mt-dark-tiles{filter:invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.9) saturate(0.6);}
 </style>
 </head>
 <body>
@@ -1567,6 +1568,8 @@ function AOMap({f,rows,locs2,ao,myUid,canEditOthers,setPersonLocation,isAdmin,re
   const regionLayersRef = React.useRef({});
   const circleLayersRef = React.useRef([]);
   const previewRef = React.useRef(null);
+  const baseLayersRef = React.useRef({});
+  const [base,setBase] = React.useState("dark");
   const markerRef = React.useRef(null);
   const [selected,setSelected] = React.useState(null);
   const [status,setStatus] = React.useState("loading");
@@ -1702,14 +1705,20 @@ function AOMap({f,rows,locs2,ao,myUid,canEditOthers,setPersonLocation,isAdmin,re
     });
     mapInstanceRef.current = map;
 
-    // Base map: CARTO dark; falls back to plain OpenStreetMap if CARTO is blocked on the network
-    const carto = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19,subdomains:'abcd',attribution:'© OSM © CARTO'}).addTo(map);
-    const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'});
-    let cLoaded=0,cErr=0,oLoaded=0,oErr=0,onOsm=false;
-    carto.on('tileload',()=>{ cLoaded++; });
-    carto.on('tileerror',()=>{ cErr++; if(!onOsm&&cLoaded===0&&cErr>=4){ onOsm=true; map.removeLayer(carto); osm.addTo(map); setTileNote("CARTO MAP TILES BLOCKED — SWITCHED TO OPENSTREETMAP"); } });
-    osm.on('tileload',()=>{ oLoaded++; setTileNote(n=>n.indexOf("BLOCKED ON THIS NETWORK")>=0?"":n); });
-    osm.on('tileerror',()=>{ oErr++; if(oLoaded===0&&oErr>=4) setTileNote("MAP PICTURE TILES ARE BLOCKED ON THIS NETWORK — REGION BORDERS AND LOCATIONS STILL WORK"); });
+    // Base maps (all free, no key): OpenStreetMap (darkened or normal) and Esri satellite
+    const OSMU='https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+    const baseLayers = {
+      dark: L.tileLayer(OSMU,{maxZoom:19,className:'mt-dark-tiles',attribution:'© OpenStreetMap contributors'}),
+      street: L.tileLayer(OSMU,{maxZoom:19,attribution:'© OpenStreetMap contributors'}),
+      sat: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:18,attribution:'Imagery © Esri'})
+    };
+    baseLayersRef.current = baseLayers;
+    Object.keys(baseLayers).forEach(k=>{
+      let ok=0,bad=0; const L2=baseLayers[k];
+      L2.on('tileload',()=>{ ok++; setTileNote(""); });
+      L2.on('tileerror',()=>{ bad++; if(ok===0&&bad>=4) setTileNote("MAP PICTURE TILES ARE BLOCKED ON THIS NETWORK — REGION BORDERS AND LOCATIONS STILL WORK"); });
+    });
+    baseLayers.dark.addTo(map);
 
     map.on('click',e=>{ if(placingRef.current) setDraft(d=>({...d,lat:e.latlng.lat,lng:e.latlng.lng})); });
 
@@ -1753,6 +1762,12 @@ function AOMap({f,rows,locs2,ao,myUid,canEditOthers,setPersonLocation,isAdmin,re
 
     return()=>{ if(mapInstanceRef.current){mapInstanceRef.current.remove();mapInstanceRef.current=null;districtLayersRef.current=[];offLayersRef.current=[];nightLayersRef.current=[];regionLayerRef.current=null;regionLayersRef.current={};circleLayersRef.current=[];} };
   },[]);
+
+  React.useEffect(()=>{
+    const map=mapInstanceRef.current, bl=baseLayersRef.current; if(!map||!bl.dark) return;
+    Object.keys(bl).forEach(k=>{ if(k!==base&&map.hasLayer(bl[k])) map.removeLayer(bl[k]); });
+    if(!map.hasLayer(bl[base])){ bl[base].addTo(map); bl[base].bringToBack(); }
+  },[base]);
 
   // re-centre when the admin changes the AO
   React.useEffect(()=>{
@@ -1865,6 +1880,10 @@ function AOMap({f,rows,locs2,ao,myUid,canEditOthers,setPersonLocation,isAdmin,re
         <span style={{fontSize:"9px",color:"#5a6a7a",letterSpacing:"2px",fontFamily:fnt}}>SHOW:</span>
         {toggleBtn(showOff,()=>setShowOff(v=>!v),"#e74c3c","🔴 OFF LIMITS")}
         {toggleBtn(showNight,()=>setShowNight(v=>!v),"#f39c12","🟡 NIGHT RESTRICTION")}
+        <span style={{fontSize:"9px",color:"#5a6a7a",letterSpacing:"2px",fontFamily:fnt,marginLeft:"10px"}}>MAP:</span>
+        {toggleBtn(base==="dark",()=>setBase("dark"),"#c9a84c","DARK")}
+        {toggleBtn(base==="street",()=>setBase("street"),"#c9a84c","STREET")}
+        {toggleBtn(base==="sat",()=>setBase("sat"),"#c9a84c","SATELLITE")}
         {iso3&&<>
           <span style={{fontSize:"9px",color:"#5a6a7a",letterSpacing:"2px",fontFamily:fnt,marginLeft:"10px"}}>DETAIL:</span>
           {toggleBtn(level==="ADM1",()=>setLevel("ADM1"),"#2ecc71","REGIONS")}
